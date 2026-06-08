@@ -1,0 +1,116 @@
+#body {
+    layout: horizontal;
+    height: 1fr;
+}
+
+#left {
+    width: 32;
+    min-width: 20;
+    border-right: solid $primary-darken-2;
+    height: 100%;
+}
+
+#right {
+    width: 1fr;
+    height: 100%;
+}
+
+.panel-title {
+    background: $primary-darken-3;
+    color: $text;
+    padding: 0 1;
+    height: 1;
+}
+
+.panel-title-bar {
+    layout: horizontal;
+    height: 1;
+    background: $primary-darken-3;
+}
+
+.panel-title-bar Label {
+    color: $text;
+    padding: 0 1;
+    width: 1fr;
+}
+
+.add-btn {
+    min-width: 5;
+    width: 5;
+    height: 1;
+    border: none;
+    background: $primary-darken-1;
+    color: $text;
+    text-style: bold;
+}
+
+.add-btn:hover {
+    background: $success;
+}
+
+ListView {
+    height: 1fr;
+    border: none;
+    background: $surface;
+    padding: 0;
+}
+
+ListItem {
+    padding: 0 1;
+    height: 1;
+}
+
+ListItem:hover {
+    background: $primary-darken-2;
+}
+
+ListItem.-highlight {
+    background: $primary-darken-1;
+}
+
+.session-item {
+    layout: horizontal;
+    height: 1;
+}
+
+.session-display {
+    width: 1fr;
+    color: $text;
+}
+
+.session-age {
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.session-badge {
+    color: $success;
+    padding: 0 1;
+}
+
+.empty-hint {
+    color: $text-muted;
+    padding: 1 2;
+}
+
+DirectoryTree {
+    height: 1fr;
+}
+
+#dir-picker-dialog {
+    width: 60%;
+    height: 70%;
+    border: solid $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#dir-picker-buttons {
+    layout: horizontal;
+    height: 3;
+    align: right middle;
+}
+
+#dir-picker-buttons Button {
+    margin: 0 1;
+}
