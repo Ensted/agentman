@@ -8,11 +8,12 @@ keep running in the background.
 ## Run / develop / test
 
 ```bash
-pip install --break-system-packages -e ~/ws/agentman   # editable install
+pipx install --editable ~/agentman      # isolated venv, on PATH, editable
 agentman            # attach to running session, or start fresh
 agentman --clean    # kill old session, then start fresh  (use this after code changes)
 agentman --kill     # kill the session and exit
-cd ~/ws/agentman && python -m pytest    # 65+ tests, asyncio_mode=auto (pytest.ini)
+# tests (use a venv): python -m venv .venv && . .venv/bin/activate
+#                     pip install -e '.[dev]' && pytest
 ```
 
 Editable install → any *new* `agentman` process runs current code, but a

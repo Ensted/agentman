@@ -12,11 +12,11 @@ Use [pipx](https://pipx.pypa.io) — it installs agentman into its own isolated
 venv and puts the `agentman` command on your PATH (no `--break-system-packages`):
 
 ```bash
-pipx install --editable ~/ws/agentman
+pipx install --editable ~/agentman
 ```
 
 `--editable` means code changes are picked up by the next `agentman --clean`.
-(Plain `pip install --editable ~/ws/agentman` inside a venv works too.)
+(Plain `pip install --editable ~/agentman` inside a venv works too.)
 
 ## Run
 
@@ -110,7 +110,7 @@ full-screen (no layout).
 Tests need `pytest` + `pytest-asyncio` (the `dev` extra). Use a venv:
 
 ```bash
-cd ~/ws/agentman
+cd ~/agentman
 python -m venv .venv && . .venv/bin/activate
 pip install -e '.[dev]'
 pytest
