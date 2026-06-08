@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import subprocess
+import uuid
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -44,7 +45,6 @@ class AgentManApp(App):
         self._has_workspace = has_workspace
         self._open_session_id: str | None = None
         self._current_key: str | None = None
-        self._new_counter = 0
         self._current_project: Project | None = None
         self._sessions_by_key: dict[str, str] = {}   # key -> resume session id
         self._launched_projects: dict[str, str] = {}  # key -> resolved project path
@@ -118,6 +118,12 @@ class AgentManApp(App):
         self.query_one(ProjectList).update_activity(self._project_activity())
 
     def _poll_completions(self) -> None:
+        # If the in-scope claude exited, its pane is gone — drop the open state
+        # so it stops showing as "● open".
+        if self._current_key and not self._tmux.workspace_exists():
+            self._open_session_id = None
+            self._current_key = None
+
         done = self._done_id8s()
         newly = done - self._notified_done
         if newly:
@@ -126,10 +132,12 @@ class AgentManApp(App):
         elif not done and self._notified_done:
             self.sub_title = "Claude sessions across projects"
         self._notified_done = done
+
         if self._current_project:
-            self._reload_sessions(self._current_project)
-        else:
-            self.query_one(ProjectList).update_activity(self._project_activity())
+            # In-place marker refresh — avoids the list flickering every poll.
+            self.query_one(SessionPanel).refresh_markers(
+                self._open_session_id, self._running_id8s(), self._done_id8s())
+        self.query_one(ProjectList).update_activity(self._project_activity())
 
     # ── Project list events ──────────────────────────────────────────────────
 
@@ -172,12 +180,13 @@ class AgentManApp(App):
             self._open_fallback(project_path, session_id)
             return
 
-        if session_id is not None:
-            key = _resume_key(session_id)
-            self._sessions_by_key[key] = session_id
-        else:
-            self._new_counter += 1
-            key = f"n{self._new_counter}"
+        # New sessions get a known id up front (--session-id), so they are
+        # tracked, marked "open", and rejoinable exactly like resumed ones.
+        resume = session_id is not None
+        if session_id is None:
+            session_id = str(uuid.uuid4())
+        key = _resume_key(session_id)
+        self._sessions_by_key[key] = session_id
         self._launched_projects[key] = project_path
 
         # Reset completion state for the session leaving scope (so a later
@@ -185,11 +194,10 @@ class AgentManApp(App):
         prev_id = self._sessions_by_key.get(self._current_key) if self._current_key else None
         if prev_id:
             hooks.clear_done(prev_id)
-        if session_id:
-            hooks.clear_done(session_id)
-            self._notified_done.discard(session_id[:8])
+        hooks.clear_done(session_id)
+        self._notified_done.discard(session_id[:8])
 
-        self._tmux.show_session(project_path, session_id, key, self._current_key)
+        self._tmux.show_session(project_path, session_id, key, self._current_key, resume)
         self._current_key = key
         self._open_session_id = session_id
         if self._current_project:

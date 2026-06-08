@@ -128,6 +128,40 @@ async def test_completion_detection_flags_background_session(seeded, monkeypatch
         assert "finished" in app.sub_title
 
 
+async def test_new_session_gets_known_id_and_is_marked_open(seeded, monkeypatch):
+    calls = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "show_session",
+                        lambda path, sid, key, prev, resume: calls.append((sid, resume)))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        app.query_one(ProjectList).post_message(
+            ProjectList.Highlighted(app._config.projects[0]))
+        await pilot.pause()
+        app.query_one(SessionPanel).post_message(
+            SessionPanel.NewRequested(app._config.projects[0]))
+        await pilot.pause()
+    sid, resume = calls[0]
+    assert resume is False                 # launched with --session-id, not --resume
+    assert sid and sid == app._open_session_id   # known id, marked as the open one
+    assert app._current_key == f"s{sid[:8]}"
+
+
+async def test_inscope_state_clears_when_pane_closes(seeded, monkeypatch):
+    app = AgentManApp(has_workspace=True)
+    # Pretend a session is in scope, then its claude pane is gone.
+    monkeypatch.setattr(app._tmux, "workspace_exists", lambda: False)
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._current_key = "sa2"
+        app._open_session_id = "a2"
+        app._poll_completions()
+        await pilot.pause()
+    assert app._open_session_id is None
+    assert app._current_key is None
+
+
 async def test_open_missing_folder_is_blocked(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
@@ -227,7 +261,8 @@ async def test_open_session_shows_via_tmux(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
     monkeypatch.setattr(app._tmux, "show_session",
-                        lambda path, sid, key, prev: calls.append((path, sid, key, prev)))
+                        lambda path, sid, key, prev, resume: calls.append(
+                            (path, sid, key, prev, resume)))
     monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
     async with app.run_test() as pilot:
         app.query_one(ProjectList).post_message(
@@ -237,9 +272,9 @@ async def test_open_session_shows_via_tmux(seeded, monkeypatch):
         sp.post_message(SessionPanel.OpenRequested(sp._sessions[0]))
         await pilot.pause()
 
-    # newest-first -> a2; keyed by resume prefix; no previous session.
+    # newest-first -> a2; keyed by resume prefix; resuming an existing session.
     apath = app._config.projects[0].resolved_path
-    assert calls == [(apath, "a2", "sa2", None)]
+    assert calls == [(apath, "a2", "sa2", None, True)]
     assert app._open_session_id == "a2"
     assert app._current_key == "sa2"
 
@@ -248,7 +283,7 @@ async def test_switching_sessions_passes_previous_key(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
     monkeypatch.setattr(app._tmux, "show_session",
-                        lambda path, sid, key, prev: calls.append((sid, key, prev)))
+                        lambda path, sid, key, prev, resume: calls.append((sid, key, prev)))
     monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
     async with app.run_test() as pilot:
         app.query_one(ProjectList).post_message(

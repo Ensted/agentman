@@ -52,8 +52,13 @@ class Tmux:
         ]
 
     @staticmethod
-    def _claude_command(session_id: str | None) -> str:
-        claude = f"claude --resume {shlex.quote(session_id)}" if session_id else "claude"
+    def _claude_command(session_id: str | None, resume: bool = True) -> str:
+        if session_id and resume:
+            claude = f"claude --resume {shlex.quote(session_id)}"
+        elif session_id:                       # new session with a known id
+            claude = f"claude --session-id {shlex.quote(session_id)}"
+        else:
+            claude = "claude"
         # Suppress Claude Code's startup announcement banner in our panes.
         claude = f"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 {claude}"
         shell = os.environ.get("SHELL", "bash")
@@ -84,10 +89,11 @@ class Tmux:
                 "-s", f"{Tmux.bg_window(key)}.0", "-t", f"{SESSION}:0.0"]
 
     @staticmethod
-    def spawn_cmd(project_path: str, session_id: str | None) -> list[str]:
+    def spawn_cmd(project_path: str, session_id: str | None,
+                  resume: bool = True) -> list[str]:
         """Start a fresh claude in a new right pane next to the browser."""
         return ["tmux", "split-window", "-h", "-t", f"{SESSION}:0.0",
-                "-c", project_path, Tmux._claude_command(session_id)]
+                "-c", project_path, Tmux._claude_command(session_id, resume)]
 
     @staticmethod
     def select_workspace_cmd() -> list[str]:
@@ -155,7 +161,8 @@ class Tmux:
         return {w[len("am-"):] for w in self._window_names() if w.startswith("am-")}
 
     def show_session(self, project_path: str, session_id: str | None,
-                     new_key: str, prev_key: str | None) -> None:
+                     new_key: str, prev_key: str | None,
+                     resume: bool = True) -> None:
         # Already in scope — just focus it.
         if new_key == prev_key and self.workspace_exists():
             self.runner(self.select_workspace_cmd())
@@ -167,7 +174,7 @@ class Tmux:
         if self.window_exists(self.bg_window(new_key)):
             self.runner(self.join_cmd(new_key))
         else:
-            self.runner(self.spawn_cmd(project_path, session_id))
+            self.runner(self.spawn_cmd(project_path, session_id, resume))
         self.runner(self.select_workspace_cmd())
         self.runner(self.browser_width_cmd())
 

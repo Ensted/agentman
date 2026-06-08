@@ -49,6 +49,23 @@ class SessionPanel(Vertical):
         self._sessions = load_sessions(project.resolved_path)
         self._rebuild()
 
+    def refresh_markers(self, open_session_id: str | None,
+                        running_id8s: set[str], done_id8s: set[str]) -> None:
+        """Poll-time update: refresh badges in place (no flicker) and pick up
+        added/removed sessions only when the set actually changed."""
+        self._open_session_id = open_session_id
+        self._running_id8s = running_id8s
+        self._done_id8s = done_id8s
+        if self._project is None:
+            return
+        new = load_sessions(self._project.resolved_path)
+        if [s.session_id for s in new] == [s.session_id for s in self._sessions]:
+            self._sessions = new
+            self._apply_markers()
+        else:
+            self._sessions = new
+            self._rebuild()
+
     @property
     def highlighted_session(self) -> ClaudeSession | None:
         lv = self.query_one("#session-listview", ListView)
@@ -62,6 +79,18 @@ class SessionPanel(Vertical):
         self.query_one("#session-title", Label).update("Sessions")
         self.query_one("#session-listview", ListView).clear()
 
+    def _session_label(self, session: ClaudeSession) -> str:
+        age = relative_time(session.timestamp)
+        if session.session_id == self._open_session_id:
+            badge = "  ● open"
+        elif session.session_id[:8] in self._done_id8s:
+            badge = "  ✓ done"
+        elif session.session_id[:8] in self._running_id8s:
+            badge = "  · running"
+        else:
+            badge = ""
+        return f"{session.display[:50]}  ({age}){badge}"
+
     def _rebuild(self) -> None:
         lv = self.query_one("#session-listview", ListView)
         lv.clear()
@@ -72,19 +101,22 @@ class SessionPanel(Vertical):
             return
 
         for session in self._sessions:
-            age = relative_time(session.timestamp)
-            if session.session_id == self._open_session_id:
-                badge = "  ● open"
-            elif session.session_id[:8] in self._done_id8s:
-                badge = "  ✓ done"
-            elif session.session_id[:8] in self._running_id8s:
-                badge = "  · running"
-            else:
-                badge = ""
-            label = f"{session.display[:50]}  ({age}){badge}"
-            item = ListItem(Label(label))
+            item = ListItem(Label(self._session_label(session)))
             item.data = session  # type: ignore[attr-defined]
             lv.append(item)
+
+    def _apply_markers(self) -> None:
+        """Update existing rows' labels in place — no clear/rebuild, no flicker."""
+        lv = self.query_one("#session-listview", ListView)
+        children = list(lv.children)
+        if len(children) != len(self._sessions):
+            self._rebuild()
+            return
+        for item, session in zip(children, self._sessions):
+            try:
+                item.query_one(Label).update(self._session_label(session))
+            except Exception:
+                pass
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         session = getattr(event.item, "data", None)
