@@ -5,7 +5,7 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Vertical
 from textual.widgets import Footer, Header, ListView
 
 from agentman import hooks
@@ -52,7 +52,7 @@ class AgentManApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Horizontal(id="body"):
+        with Vertical(id="body"):
             yield ProjectList(self._config)
             yield SessionPanel()
         yield Footer()

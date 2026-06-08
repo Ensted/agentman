@@ -47,11 +47,15 @@ left, the in-scope session shows on the right, and other sessions keep running
 in hidden background windows.
 
 ```
-┌─ browser ─┬──── in-scope session ────┐
-│ projects  │  claude — B              │
-│ sessions  │                          │   A, C still running in
-└───────────┴──────────────────────────┘   background windows (not killed)
+┌─ browser ──┬──── in-scope session ────┐
+│ projects   │  claude — B              │
+│ ·········· │                          │   A, C still running in
+│ sessions   │                          │   background windows (not killed)
+└────────────┴──────────────────────────┘
 ```
+
+The browser sidebar stacks the project list on top and the sessions for the
+selected project below it.
 
 - **Projects** are folders, stored in `~/.config/agentman/config.toml`.
   Each row shows activity for sessions agentman launched: `●N` running in the

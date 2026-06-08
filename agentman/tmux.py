@@ -8,7 +8,7 @@ from typing import Callable
 
 
 SESSION = "agentman"
-BROWSER_WIDTH = 36          # columns for the always-visible browser sidebar
+BROWSER_WIDTH = 44          # columns for the always-visible browser sidebar
 
 
 def _run(argv: list[str]) -> subprocess.CompletedProcess:
