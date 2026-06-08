@@ -59,9 +59,23 @@ in hidden background windows.
   another session **parks the current one in its own background window** (via
   `break-pane`) so it keeps running, then brings the target in (`join-pane` if
   it was already running, else a fresh spawn).
-- Markers: `● open` = in scope; `· running` = alive in the background.
+- Markers: `● open` = in scope; `· running` = alive in the background;
+  `✓ done` = a background session finished its work (see below).
 - `n` starts a fresh `claude` in the current project.
 - agentman never touches Claude's session data — it only launches and lists.
+
+### Completion notifications
+
+agentman registers a Claude Code **`Stop` hook** in `~/.claude/settings.json`
+on first launch. When any claude session finishes a turn, the hook writes a
+marker file under `~/.local/share/agentman/done/`. agentman polls these and,
+when a *background* (not-in-scope) session finishes, marks it `✓ done` in the
+list and rings the terminal bell. The marker clears when you bring that
+session back into scope.
+
+The hook is a one-line, idempotent addition that only writes a marker file —
+it touches nothing else. To remove it, delete the agentman `Stop` entry from
+`~/.claude/settings.json`.
 
 Drag the pane divider (mouse enabled) to resize. If launched while already
 inside another tmux session, it falls back to suspending and running claude

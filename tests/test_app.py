@@ -4,6 +4,7 @@ import pytest
 
 import agentman.config as config_mod
 import agentman.claude_sessions as cs
+import agentman.hooks as hooks
 from agentman.app import AgentManApp
 from agentman.config import Config, Project
 from agentman.ui.project_list import ProjectList
@@ -105,6 +106,24 @@ async def test_ctrl_q_exits_when_no_workspace(seeded, monkeypatch):
         await app.run_action("close_app")
         await pilot.pause()
     assert exited == [True]  # plain exit, no tmux session to detach
+
+
+async def test_completion_detection_flags_background_session(seeded, monkeypatch):
+    app = AgentManApp(has_workspace=True)
+    # A launched session parked in the background, with a different one in scope.
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sbgid1234"})
+    monkeypatch.setattr(hooks, "is_done", lambda sid: sid == "bgid1234-full")
+    bells = []
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._sessions_by_key = {"sbgid1234": "bgid1234-full"}
+        app._current_key = "sother567"
+        monkeypatch.setattr(app, "bell", lambda: bells.append(1))
+        app._poll_completions()
+        await pilot.pause()
+        assert "bgid1234" in app._done_id8s()   # flagged done
+        assert bells == [1]                       # notified once
+        assert "finished" in app.sub_title
 
 
 async def test_open_session_shows_via_tmux(seeded, monkeypatch):

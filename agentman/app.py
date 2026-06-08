@@ -8,6 +8,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Header, ListView
 
+from agentman import hooks
 from agentman.config import Config, Project
 from agentman.tmux import Tmux
 from agentman.ui.project_list import ProjectList
@@ -43,6 +44,8 @@ class AgentManApp(App):
         self._current_key: str | None = None
         self._new_counter = 0
         self._current_project: Project | None = None
+        self._sessions_by_key: dict[str, str] = {}   # key -> resume session id
+        self._notified_done: set[str] = set()          # id8s already flagged done
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -53,6 +56,12 @@ class AgentManApp(App):
 
     def on_mount(self) -> None:
         self.query_one("#project-listview", ListView).focus()
+        if self._has_workspace:
+            try:
+                hooks.install()
+            except Exception:
+                pass
+            self.set_interval(3.0, self._poll_completions)
 
     # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -62,9 +71,35 @@ class AgentManApp(App):
             return set()
         return {k[1:] for k in self._tmux.running_keys() if k.startswith("s")}
 
+    def _done_id8s(self) -> set[str]:
+        """Background sessions that have finished a turn (completed work)."""
+        if not self._has_workspace:
+            return set()
+        running = self._tmux.running_keys()
+        out: set[str] = set()
+        for key in running:
+            if key == self._current_key:
+                continue
+            sid = self._sessions_by_key.get(key)
+            if sid and hooks.is_done(sid):
+                out.add(sid[:8])
+        return out
+
     def _reload_sessions(self, project: Project) -> None:
         self.query_one(SessionPanel).load_project(
-            project, self._open_session_id, self._running_id8s())
+            project, self._open_session_id, self._running_id8s(), self._done_id8s())
+
+    def _poll_completions(self) -> None:
+        done = self._done_id8s()
+        newly = done - self._notified_done
+        if newly:
+            self.bell()
+            self.sub_title = f"✓ {len(done)} background session(s) finished"
+        elif not done and self._notified_done:
+            self.sub_title = "Claude sessions across projects"
+        self._notified_done = done
+        if self._current_project:
+            self._reload_sessions(self._current_project)
 
     # ── Project list events ──────────────────────────────────────────────────
 
@@ -104,9 +139,19 @@ class AgentManApp(App):
 
         if session_id is not None:
             key = _resume_key(session_id)
+            self._sessions_by_key[key] = session_id
         else:
             self._new_counter += 1
             key = f"n{self._new_counter}"
+
+        # Reset completion state for the session leaving scope (so a later
+        # finish registers afresh) and the one entering scope.
+        prev_id = self._sessions_by_key.get(self._current_key) if self._current_key else None
+        if prev_id:
+            hooks.clear_done(prev_id)
+        if session_id:
+            hooks.clear_done(session_id)
+            self._notified_done.discard(session_id[:8])
 
         self._tmux.show_session(project_path, session_id, key, self._current_key)
         self._current_key = key
