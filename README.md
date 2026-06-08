@@ -1,8 +1,10 @@
 # agentman
 
-A terminal session manager for Claude Code. Projects on the left, their Claude
-sessions on the right. Pick a folder, see its sessions, open one — each runs in
-its own tmux session so it survives detaching and closing the terminal.
+A terminal session manager for Claude Code. A sidebar lists your project
+folders with the Claude sessions for the selected one stacked below. Open a
+session and it runs beside the browser; switch to another and the first keeps
+running in the background. Everything lives in one tmux session, so you can
+detach and come back to it.
 
 ## Install
 
@@ -69,13 +71,15 @@ selected project below it.
 - **Sessions** are Claude Code's own, read from `~/.claude/history.jsonl`,
   deduplicated to one entry per session. Only sessions with a saved transcript
   (resumable) are shown.
-- Opening a session runs `claude --resume <id>` in the right pane. Switching to
-  another session **parks the current one in its own background window** (via
-  `break-pane`) so it keeps running, then brings the target in (`join-pane` if
-  it was already running, else a fresh spawn).
+- Opening a session runs `claude --resume <id>` in the right pane. A new
+  session (`n`) runs `claude --session-id <uuid>` with a freshly generated id,
+  so agentman tracks it the same way and marks it `● open` once its first
+  prompt lands.
+- Switching to another session **parks the current one in its own background
+  window** (via `break-pane`) so it keeps running, then brings the target in
+  (`join-pane` if it was already running, else a fresh spawn).
 - Markers: `● open` = in scope; `· running` = alive in the background;
   `✓ done` = a background session finished its work (see below).
-- `n` starts a fresh `claude` in the current project.
 - agentman never touches Claude's session data — it only launches and lists.
 
 ### Completion notifications
