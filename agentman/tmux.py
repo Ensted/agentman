@@ -94,6 +94,14 @@ class Tmux:
         return ["tmux", "select-pane", "-t", f"{SESSION}:0.1"]
 
     @staticmethod
+    def has_session_cmd() -> list[str]:
+        return ["tmux", "has-session", "-t", SESSION]
+
+    @staticmethod
+    def detach_cmd() -> list[str]:
+        return ["tmux", "detach-client", "-s", SESSION]
+
+    @staticmethod
     def browser_width_cmd() -> list[str]:
         return ["tmux", "resize-pane", "-t", f"{SESSION}:0.0", "-x", str(BROWSER_WIDTH)]
 
@@ -102,6 +110,14 @@ class Tmux:
     def bootstrap_and_attach(self, self_exe: str) -> None:
         for cmd in self.bootstrap_cmds(self_exe):
             self.runner(cmd)
+
+    def session_running(self) -> bool:
+        result = self.capture(self.has_session_cmd())
+        return getattr(result, "returncode", 1) == 0
+
+    def detach(self) -> None:
+        """Detach the whole session — browser and all claude sessions keep running."""
+        self.runner(self.detach_cmd())
 
     def _window_names(self) -> list[str]:
         result = self.capture(self.list_windows_cmd())
@@ -142,5 +158,9 @@ class Tmux:
 
 
 def relaunch_in_tmux() -> None:
-    """If not already inside our tmux session, build the layout and attach."""
-    Tmux().bootstrap_and_attach(sys.argv[0])
+    """Attach to a running agentman session, or build the layout from scratch."""
+    t = Tmux()
+    if t.session_running():
+        subprocess.run(["tmux", "attach-session", "-t", SESSION])
+    else:
+        t.bootstrap_and_attach(sys.argv[0])

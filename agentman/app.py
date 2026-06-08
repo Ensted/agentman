@@ -25,7 +25,8 @@ class AgentManApp(App):
     SUB_TITLE = "Claude sessions across projects"
 
     BINDINGS = [
-        Binding("q", "quit", "Quit"),
+        Binding("ctrl+q", "close_app", "Quit"),
+        Binding("q", "close_app", "Quit", show=False),
         Binding("a", "add_project", "Add project"),
         Binding("d", "remove_project", "Remove project"),
         Binding("n", "new_session", "New session"),
@@ -122,6 +123,15 @@ class AgentManApp(App):
             subprocess.run(argv, cwd=project_path, env=env)
 
     # ── Actions ──────────────────────────────────────────────────────────────
+
+    def action_close_app(self) -> None:
+        # Detach the whole tmux session: agentman closes from view but the
+        # browser and every claude session keep running in the background.
+        # Re-run `agentman` to come back. Without our layout, just exit.
+        if self._has_workspace:
+            self._tmux.detach()
+        else:
+            self.exit()
 
     def action_add_project(self) -> None:
         self.push_screen(DirPickerModal(), self._on_dir_picked)

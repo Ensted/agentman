@@ -26,10 +26,15 @@ agentman
 | `d`       | Remove the highlighted project from the view      |
 | `n`       | New Claude session in the current project         |
 | `r`       | Refresh                                           |
-| `q`       | Quit                                              |
+| `Ctrl+Q`  | Close agentman (detach) — sessions keep running   |
 
 Removing a project (`d`) only drops it from agentman's list — it never
 touches the folder or Claude's session history.
+
+`Ctrl+Q` detaches the whole tmux session: agentman closes from view and you
+return to your shell, but the browser and every running Claude session stay
+alive in the background. Run `agentman` again to re-attach right where you
+left off.
 
 Inside a session, detach from tmux with `Ctrl+b d` to return to agentman.
 

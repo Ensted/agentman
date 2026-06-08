@@ -121,3 +121,14 @@ def test_workspace_exists_true_when_pane_1_present():
 def test_workspace_exists_false_when_only_browser():
     capture = FakeRunner(stdout="0\n", returncode=0)
     assert Tmux(capture=capture).workspace_exists() is False
+
+
+def test_detach_targets_the_session():
+    runner = FakeRunner()
+    Tmux(runner=runner).detach()
+    assert runner.calls == [["tmux", "detach-client", "-s", SESSION]]
+
+
+def test_session_running_reflects_has_session_returncode():
+    assert Tmux(capture=FakeRunner(returncode=0)).session_running() is True
+    assert Tmux(capture=FakeRunner(returncode=1)).session_running() is False

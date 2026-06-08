@@ -84,6 +84,29 @@ async def test_remove_project_drops_it_from_view_and_config(seeded):
     assert first.name not in [p.name for p in Config.load().projects]
 
 
+async def test_ctrl_q_detaches_when_in_workspace(seeded, monkeypatch):
+    detached = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "detach", lambda: detached.append(True))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.run_action("close_app")
+        await pilot.pause()
+    assert detached == [True]  # session detached, not torn down
+
+
+async def test_ctrl_q_exits_when_no_workspace(seeded, monkeypatch):
+    exited = []
+    app = AgentManApp(has_workspace=False)
+    monkeypatch.setattr(app, "exit", lambda *a, **k: exited.append(True))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.run_action("close_app")
+        await pilot.pause()
+    assert exited == [True]  # plain exit, no tmux session to detach
+
+
 async def test_open_session_shows_via_tmux(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
