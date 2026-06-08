@@ -32,6 +32,7 @@ class AgentManApp(App):
         Binding("d", "remove_project", "Remove project"),
         Binding("n", "new_session", "New session"),
         Binding("k", "kill_session", "Kill session"),
+        Binding("o", "open_in_vscode", "Open in VS Code"),
         Binding("r", "refresh", "Refresh"),
         Binding("tab", "focus_next", "Switch panel", show=False),
     ]
@@ -253,6 +254,26 @@ class AgentManApp(App):
             self._open_session_id = None
         if self._current_project:
             self._reload_sessions(self._current_project)
+
+    def action_open_in_vscode(self) -> None:
+        project = self._current_project
+        if project is None:
+            return
+        path = project.resolved_path
+        if not Path(path).exists():
+            self.bell()
+            self.notify(f"Folder no longer exists: {path}", severity="error")
+            return
+        try:
+            subprocess.Popen(
+                ["code", path],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            self.bell()
+            self.notify("VS Code CLI ('code') not found on PATH", severity="error")
+            return
+        self.notify(f"Opening {project.name} in VS Code")
 
     def action_refresh(self) -> None:
         if self._current_project:

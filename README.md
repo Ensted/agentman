@@ -26,6 +26,7 @@ agentman
 | `d`       | Remove the highlighted project from the view      |
 | `n`       | New Claude session in the current project         |
 | `k`       | Kill the highlighted session (in-scope or background) |
+| `o`       | Open the current project folder in VS Code        |
 | `r`       | Refresh                                           |
 | `Ctrl+Q`  | Close agentman (detach) — sessions keep running   |
 

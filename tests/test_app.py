@@ -192,6 +192,37 @@ async def test_kill_current_session(seeded, monkeypatch):
         assert app._current_key is None and app._open_session_id is None
 
 
+async def test_open_in_vscode_launches_code(seeded, monkeypatch):
+    import agentman.app as appmod
+    launched = []
+    monkeypatch.setattr(appmod.subprocess, "Popen",
+                        lambda argv, **k: launched.append(argv))
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one(ProjectList).post_message(
+            ProjectList.Highlighted(app._config.projects[0]))
+        await pilot.pause()
+        await app.run_action("open_in_vscode")
+        await pilot.pause()
+    apath = app._config.projects[0].resolved_path
+    assert launched == [["code", apath]]
+
+
+async def test_open_in_vscode_noop_without_project(seeded, monkeypatch):
+    import agentman.app as appmod
+    launched = []
+    monkeypatch.setattr(appmod.subprocess, "Popen",
+                        lambda argv, **k: launched.append(argv))
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._current_project = None
+        await app.run_action("open_in_vscode")
+        await pilot.pause()
+    assert launched == []
+
+
 async def test_open_session_shows_via_tmux(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
