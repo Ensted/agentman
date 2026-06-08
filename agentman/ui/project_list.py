@@ -49,7 +49,7 @@ class ProjectList(Vertical):
             return project.name
         parts = [project.name]
         if act.get("running"):
-            parts.append(f"●{act['running']}")
+            parts.append(f"● {act['running']}")
         if act.get("done"):
             parts.append("✓")
         return "  ".join(parts)
