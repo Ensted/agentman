@@ -7,6 +7,7 @@ watches those markers to flag background sessions that have finished working.
 from __future__ import annotations
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -36,7 +37,11 @@ sys.exit(0)
 
 
 def _hook_command() -> str:
-    return f"{sys.executable} {HELPER}"
+    # The helper is pure stdlib — use a stable system python3 rather than
+    # whatever interpreter agentman happens to run under (e.g. a pipx venv,
+    # which could be rebuilt and change paths).
+    python = shutil.which("python3") or sys.executable
+    return f"{python} {HELPER}"
 
 
 def install() -> None:
@@ -55,8 +60,10 @@ def install() -> None:
     cmd = _hook_command()
     hooks = settings.setdefault("hooks", {})
     stop = hooks.setdefault("Stop", [])
+    # Identify our hook by the helper path, so a changed interpreter path
+    # doesn't add a duplicate entry.
     already = any(
-        cmd in h.get("command", "")
+        str(HELPER) in h.get("command", "")
         for group in stop
         for h in group.get("hooks", [])
     )

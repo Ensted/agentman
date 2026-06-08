@@ -8,9 +8,15 @@ detach and come back to it.
 
 ## Install
 
+Use [pipx](https://pipx.pypa.io) — it installs agentman into its own isolated
+venv and puts the `agentman` command on your PATH (no `--break-system-packages`):
+
 ```bash
-pip install --break-system-packages -e ~/ws/agentman
+pipx install --editable ~/ws/agentman
 ```
+
+`--editable` means code changes are picked up by the next `agentman --clean`.
+(Plain `pip install --editable ~/ws/agentman` inside a venv works too.)
 
 ## Run
 
@@ -101,7 +107,11 @@ full-screen (no layout).
 
 ## Develop / test
 
+Tests need `pytest` + `pytest-asyncio` (the `dev` extra). Use a venv:
+
 ```bash
-pip install --break-system-packages -e ~/ws/agentman[dev]
-cd ~/ws/agentman && python -m pytest
+cd ~/ws/agentman
+python -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
+pytest
 ```
