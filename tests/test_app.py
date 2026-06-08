@@ -15,15 +15,17 @@ from agentman.ui.session_panel import SessionPanel
 def seeded(tmp_path, monkeypatch):
     cfg_path = tmp_path / "config.toml"
     monkeypatch.setattr(config_mod, "CONFIG_PATH", cfg_path)
-    Config(projects=[
-        Project("alpha", "/proj/alpha"),
-        Project("beta", "/proj/beta"),
-    ]).save()
+
+    # Real project folders so the missing-folder guard doesn't reject them.
+    alpha = tmp_path / "alpha"; alpha.mkdir()
+    beta = tmp_path / "beta"; beta.mkdir()
+    apath, bpath = str(alpha.resolve()), str(beta.resolve())
+    Config(projects=[Project("alpha", apath), Project("beta", bpath)]).save()
 
     rows = [
-        {"sessionId": "a1", "project": "/proj/alpha", "display": "alpha work", "timestamp": 5000},
-        {"sessionId": "a2", "project": "/proj/alpha", "display": "more alpha", "timestamp": 6000},
-        {"sessionId": "b1", "project": "/proj/beta", "display": "beta work", "timestamp": 7000},
+        {"sessionId": "a1", "project": apath, "display": "alpha work", "timestamp": 5000},
+        {"sessionId": "a2", "project": apath, "display": "more alpha", "timestamp": 6000},
+        {"sessionId": "b1", "project": bpath, "display": "beta work", "timestamp": 7000},
     ]
     hist = tmp_path / "history.jsonl"
     hist.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -126,6 +128,70 @@ async def test_completion_detection_flags_background_session(seeded, monkeypatch
         assert "finished" in app.sub_title
 
 
+async def test_open_missing_folder_is_blocked(seeded, monkeypatch):
+    calls = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "show_session",
+                        lambda *a: calls.append(a))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._open("/definitely/not/here", "sid")
+        await pilot.pause()
+    assert calls == []   # refused to launch in a missing folder
+
+
+def test_project_activity_counts(seeded, monkeypatch):
+    app = AgentManApp(has_workspace=True)
+    app._launched_projects = {"sAAA": "/p1", "sBBB": "/p1", "sCCC": "/p2"}
+    app._sessions_by_key = {"sAAA": "idA", "sBBB": "idB", "sCCC": "idC"}
+    app._current_key = "sAAA"   # in scope, belongs to /p1
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sBBB", "sCCC"})
+    monkeypatch.setattr(hooks, "is_done", lambda sid: sid == "idB")
+
+    act = app._project_activity()
+    assert act["/p1"] == {"running": 2, "done": True}   # sAAA (scope) + sBBB (bg, done)
+    assert act["/p2"] == {"running": 1, "done": False}
+
+
+async def test_kill_background_session(seeded, monkeypatch):
+    from textual.widgets import ListView
+    killed = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "kill", lambda key, cur: killed.append((key, cur)))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sp = app.query_one(SessionPanel)
+        sp.load_project(app._config.projects[0])
+        await pilot.pause()
+        app.query_one("#session-listview", ListView).index = 0  # highlight a2
+        await pilot.pause()
+        await app.run_action("kill_session")
+        await pilot.pause()
+    assert killed == [("sa2", False)]   # background kill (not the in-scope one)
+
+
+async def test_kill_current_session(seeded, monkeypatch):
+    from textual.widgets import ListView
+    killed = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "kill", lambda key, cur: killed.append((key, cur)))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sp = app.query_one(SessionPanel)
+        sp.load_project(app._config.projects[0])
+        await pilot.pause()
+        app.query_one("#session-listview", ListView).index = 0
+        await pilot.pause()
+        app._current_key = "sa2"      # a2 is the in-scope session
+        app._open_session_id = "a2"
+        await app.run_action("kill_session")
+        await pilot.pause()
+        assert killed == [("sa2", True)]
+        assert app._current_key is None and app._open_session_id is None
+
+
 async def test_open_session_shows_via_tmux(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
@@ -141,7 +207,8 @@ async def test_open_session_shows_via_tmux(seeded, monkeypatch):
         await pilot.pause()
 
     # newest-first -> a2; keyed by resume prefix; no previous session.
-    assert calls == [("/proj/alpha", "a2", "sa2", None)]
+    apath = app._config.projects[0].resolved_path
+    assert calls == [(apath, "a2", "sa2", None)]
     assert app._open_session_id == "a2"
     assert app._current_key == "sa2"
 

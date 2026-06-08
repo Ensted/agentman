@@ -49,6 +49,12 @@ class SessionPanel(Vertical):
         self._sessions = load_sessions(project.resolved_path)
         self._rebuild()
 
+    @property
+    def highlighted_session(self) -> ClaudeSession | None:
+        lv = self.query_one("#session-listview", ListView)
+        item = lv.highlighted_child
+        return getattr(item, "data", None) if item else None
+
     def clear(self) -> None:
         """Reset the panel when no project is selected."""
         self._project = None

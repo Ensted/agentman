@@ -102,6 +102,14 @@ class Tmux:
         return ["tmux", "detach-client", "-s", SESSION]
 
     @staticmethod
+    def kill_workspace_cmd() -> list[str]:
+        return ["tmux", "kill-pane", "-t", f"{SESSION}:0.1"]
+
+    @staticmethod
+    def kill_bg_cmd(key: str) -> list[str]:
+        return ["tmux", "kill-window", "-t", Tmux.bg_window(key)]
+
+    @staticmethod
     def browser_width_cmd() -> list[str]:
         return ["tmux", "resize-pane", "-t", f"{SESSION}:0.0", "-x", str(BROWSER_WIDTH)]
 
@@ -118,6 +126,13 @@ class Tmux:
     def detach(self) -> None:
         """Detach the whole session — browser and all claude sessions keep running."""
         self.runner(self.detach_cmd())
+
+    def kill(self, key: str, is_current: bool) -> None:
+        """Kill a session: the in-scope pane, or a backgrounded session's window."""
+        if is_current:
+            self.runner(self.kill_workspace_cmd())
+        else:
+            self.runner(self.kill_bg_cmd(key))
 
     def _window_names(self) -> list[str]:
         result = self.capture(self.list_windows_cmd())

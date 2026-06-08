@@ -25,6 +25,7 @@ agentman
 | `a`       | Add a project (directory picker)                  |
 | `d`       | Remove the highlighted project from the view      |
 | `n`       | New Claude session in the current project         |
+| `k`       | Kill the highlighted session (in-scope or background) |
 | `r`       | Refresh                                           |
 | `Ctrl+Q`  | Close agentman (detach) — sessions keep running   |
 
@@ -52,6 +53,9 @@ in hidden background windows.
 ```
 
 - **Projects** are folders, stored in `~/.config/agentman/config.toml`.
+  Each row shows activity for sessions agentman launched: `●N` running in the
+  background, `✓` when one has finished. A project whose folder no longer
+  exists is shown as `(missing)` and won't launch.
 - **Sessions** are Claude Code's own, read from `~/.claude/history.jsonl`,
   deduplicated to one entry per session. Only sessions with a saved transcript
   (resumable) are shown.

@@ -31,6 +31,7 @@ class AgentManApp(App):
         Binding("a", "add_project", "Add project"),
         Binding("d", "remove_project", "Remove project"),
         Binding("n", "new_session", "New session"),
+        Binding("k", "kill_session", "Kill session"),
         Binding("r", "refresh", "Refresh"),
         Binding("tab", "focus_next", "Switch panel", show=False),
     ]
@@ -45,6 +46,7 @@ class AgentManApp(App):
         self._new_counter = 0
         self._current_project: Project | None = None
         self._sessions_by_key: dict[str, str] = {}   # key -> resume session id
+        self._launched_projects: dict[str, str] = {}  # key -> resolved project path
         self._notified_done: set[str] = set()          # id8s already flagged done
 
     def compose(self) -> ComposeResult:
@@ -85,9 +87,34 @@ class AgentManApp(App):
                 out.add(sid[:8])
         return out
 
+    def _project_activity(self) -> dict[str, dict]:
+        """Per-project counts of running launched sessions (+ any finished)."""
+        act: dict[str, dict] = {}
+
+        def bump(path: str, done: bool) -> None:
+            a = act.setdefault(path, {"running": 0, "done": False})
+            a["running"] += 1
+            if done:
+                a["done"] = True
+
+        if not self._has_workspace:
+            return act
+        running = self._tmux.running_keys()
+        for key in running:
+            path = self._launched_projects.get(key)
+            if not path:
+                continue
+            sid = self._sessions_by_key.get(key)
+            bump(path, bool(sid and hooks.is_done(sid)))
+        # The in-scope session is active too, but not a background window.
+        if self._current_key and self._current_key in self._launched_projects:
+            bump(self._launched_projects[self._current_key], False)
+        return act
+
     def _reload_sessions(self, project: Project) -> None:
         self.query_one(SessionPanel).load_project(
             project, self._open_session_id, self._running_id8s(), self._done_id8s())
+        self.query_one(ProjectList).update_activity(self._project_activity())
 
     def _poll_completions(self) -> None:
         done = self._done_id8s()
@@ -100,6 +127,8 @@ class AgentManApp(App):
         self._notified_done = done
         if self._current_project:
             self._reload_sessions(self._current_project)
+        else:
+            self.query_one(ProjectList).update_activity(self._project_activity())
 
     # ── Project list events ──────────────────────────────────────────────────
 
@@ -133,6 +162,11 @@ class AgentManApp(App):
     # ── Open / switch sessions ─────────────────────────────────────────────────
 
     def _open(self, project_path: str, session_id: str | None) -> None:
+        if not Path(project_path).exists():
+            self.bell()
+            self.notify(f"Folder no longer exists: {project_path}", severity="error")
+            return
+
         if not self._has_workspace:
             self._open_fallback(project_path, session_id)
             return
@@ -143,6 +177,7 @@ class AgentManApp(App):
         else:
             self._new_counter += 1
             key = f"n{self._new_counter}"
+        self._launched_projects[key] = project_path
 
         # Reset completion state for the session leaving scope (so a later
         # finish registers afresh) and the one entering scope.
@@ -199,6 +234,25 @@ class AgentManApp(App):
     def action_new_session(self) -> None:
         if self._current_project:
             self._open(self._current_project.resolved_path, None)
+
+    def action_kill_session(self) -> None:
+        if not self._has_workspace:
+            return
+        session = self.query_one(SessionPanel).highlighted_session
+        if session is None:
+            return
+        key = _resume_key(session.session_id)
+        is_current = key == self._current_key
+        self._tmux.kill(key, is_current)
+        hooks.clear_done(session.session_id)
+        self._sessions_by_key.pop(key, None)
+        self._launched_projects.pop(key, None)
+        self._notified_done.discard(session.session_id[:8])
+        if is_current:
+            self._current_key = None
+            self._open_session_id = None
+        if self._current_project:
+            self._reload_sessions(self._current_project)
 
     def action_refresh(self) -> None:
         if self._current_project:

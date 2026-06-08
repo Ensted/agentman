@@ -132,3 +132,15 @@ def test_detach_targets_the_session():
 def test_session_running_reflects_has_session_returncode():
     assert Tmux(capture=FakeRunner(returncode=0)).session_running() is True
     assert Tmux(capture=FakeRunner(returncode=1)).session_running() is False
+
+
+def test_kill_current_kills_workspace_pane():
+    runner = FakeRunner()
+    Tmux(runner=runner).kill("sxyz", is_current=True)
+    assert runner.calls == [["tmux", "kill-pane", "-t", f"{SESSION}:0.1"]]
+
+
+def test_kill_background_kills_window():
+    runner = FakeRunner()
+    Tmux(runner=runner).kill("sxyz", is_current=False)
+    assert runner.calls == [["tmux", "kill-window", "-t", "am-sxyz"]]
