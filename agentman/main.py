@@ -24,11 +24,28 @@ def _run_app(has_workspace: bool) -> None:
 @click.command()
 @click.option("--inner", is_flag=True, hidden=True,
               help="Run the TUI inside the prepared tmux layout.")
-def cli(inner: bool) -> None:
+@click.option("--clean", is_flag=True,
+              help="Kill any existing agentman session first, then start fresh.")
+@click.option("--kill", "kill_only", is_flag=True,
+              help="Kill the existing agentman session and exit (don't start).")
+def cli(inner: bool, clean: bool, kill_only: bool) -> None:
     """agentman — manage Claude Code sessions across projects."""
     if inner:
         _run_app(has_workspace=True)
         return
+
+    tmux = Tmux()
+
+    if kill_only:
+        if tmux.kill_session():
+            click.echo("Killed the agentman session.")
+        else:
+            click.echo("No agentman session running.")
+        return
+
+    if clean:
+        if tmux.kill_session():
+            click.echo("Killed the old agentman session.")
 
     if Tmux.inside():
         # Already inside some other tmux — run inline with the suspend fallback.

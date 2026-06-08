@@ -108,6 +108,10 @@ class Tmux:
         return ["tmux", "detach-client", "-s", SESSION]
 
     @staticmethod
+    def kill_session_cmd() -> list[str]:
+        return ["tmux", "kill-session", "-t", SESSION]
+
+    @staticmethod
     def kill_workspace_cmd() -> list[str]:
         return ["tmux", "kill-pane", "-t", f"{SESSION}:0.1"]
 
@@ -128,6 +132,14 @@ class Tmux:
     def session_running(self) -> bool:
         result = self.capture(self.has_session_cmd())
         return getattr(result, "returncode", 1) == 0
+
+    def kill_session(self) -> bool:
+        """Kill the whole agentman session (and everything in it). Returns
+        True if there was a session to kill."""
+        if not self.session_running():
+            return False
+        self.runner(self.kill_session_cmd())
+        return True
 
     def detach(self) -> None:
         """Detach the whole session — browser and all claude sessions keep running."""

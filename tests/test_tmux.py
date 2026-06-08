@@ -144,3 +144,17 @@ def test_kill_background_kills_window():
     runner = FakeRunner()
     Tmux(runner=runner).kill("sxyz", is_current=False)
     assert runner.calls == [["tmux", "kill-window", "-t", "am-sxyz"]]
+
+
+def test_kill_session_when_running():
+    runner = FakeRunner()
+    capture = FakeRunner(returncode=0)   # has-session succeeds
+    assert Tmux(runner=runner, capture=capture).kill_session() is True
+    assert runner.calls == [["tmux", "kill-session", "-t", SESSION]]
+
+
+def test_kill_session_when_absent():
+    runner = FakeRunner()
+    capture = FakeRunner(returncode=1)   # no session
+    assert Tmux(runner=runner, capture=capture).kill_session() is False
+    assert runner.calls == []

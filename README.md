@@ -13,8 +13,13 @@ pip install --break-system-packages -e ~/ws/agentman
 ## Run
 
 ```bash
-agentman
+agentman           # attach to the running session, or start a fresh one
+agentman --clean   # kill the old session first, then start fresh
+agentman --kill    # kill the running session and exit (don't start)
 ```
+
+`--clean` is the easy way to pick up code changes during development; `--kill`
+tears everything down (browser + all claude sessions in the session).
 
 ## Keys
 
