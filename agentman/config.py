@@ -61,3 +61,14 @@ class Config:
         target = project.resolved_path
         self.projects = [p for p in self.projects if p.resolved_path != target]
         self.save()
+
+    def move_project(self, project: Project, delta: int) -> bool:
+        """Shift project by delta (-1 up, +1 down). Returns True if it moved."""
+        target = project.resolved_path
+        idx = next((i for i, p in enumerate(self.projects) if p.resolved_path == target), -1)
+        new_idx = idx + delta
+        if idx == -1 or not (0 <= new_idx < len(self.projects)):
+            return False
+        self.projects[idx], self.projects[new_idx] = self.projects[new_idx], self.projects[idx]
+        self.save()
+        return True

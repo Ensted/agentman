@@ -93,3 +93,46 @@ def test_load_missing_file_returns_empty(tmp_path, monkeypatch):
 def test_resolved_path_expands_user(monkeypatch):
     p = Project("h", "~/somedir")
     assert p.resolved_path == str(Path("~/somedir").expanduser().resolve())
+
+
+def test_move_project_up(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", cfg_path)
+
+    a, b, c = Project("a", "/a"), Project("b", "/b"), Project("c", "/c")
+    cfg = Config(projects=[a, b, c])
+    cfg.save()
+
+    moved = cfg.move_project(b, -1)
+    assert moved is True
+    assert [p.name for p in cfg.projects] == ["b", "a", "c"]
+
+    reloaded = Config.load()
+    assert [p.name for p in reloaded.projects] == ["b", "a", "c"]
+
+
+def test_move_project_down(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", cfg_path)
+
+    a, b, c = Project("a", "/a"), Project("b", "/b"), Project("c", "/c")
+    cfg = Config(projects=[a, b, c])
+    cfg.save()
+
+    moved = cfg.move_project(b, 1)
+    assert moved is True
+    assert [p.name for p in cfg.projects] == ["a", "c", "b"]
+
+
+def test_move_project_at_boundary_is_noop():
+    a, b = Project("a", "/a"), Project("b", "/b")
+    cfg = Config(projects=[a, b])
+
+    assert cfg.move_project(a, -1) is False
+    assert cfg.move_project(b, 1) is False
+    assert [p.name for p in cfg.projects] == ["a", "b"]
+
+
+def test_move_project_unknown_is_noop():
+    cfg = Config(projects=[Project("a", "/a")])
+    assert cfg.move_project(Project("z", "/z"), -1) is False

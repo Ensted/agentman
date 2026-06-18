@@ -4,7 +4,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.message import Message
-from textual.widgets import Button, Label, ListView, ListItem
+from textual.widgets import Button, Input, Label, ListView, ListItem
 
 from agentman.config import Config, Project
 
@@ -25,10 +25,14 @@ class ProjectList(Vertical):
     class AddRequested(Message):
         pass
 
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
     def __init__(self, config: Config) -> None:
         super().__init__(id="left")
         self._config = config
         self._activity: dict[str, dict] = {}
+        self._spinner_frame: int = 0
+        self._filter: str = ""
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="panel-title-bar"):
@@ -36,6 +40,9 @@ class ProjectList(Vertical):
             add = Button("+", id="btn-add-project", classes="add-btn")
             add.can_focus = False
             yield add
+        inp = Input(id="project-filter", placeholder="filter projects…")
+        inp.display = False
+        yield inp
         yield ListView(id="project-listview")
 
     def on_mount(self) -> None:
@@ -45,14 +52,15 @@ class ProjectList(Vertical):
         if not Path(project.resolved_path).exists():
             return f"{project.name}  (missing)"
         act = self._activity.get(project.resolved_path)
-        if not act:
+        if not act or not act.get("open"):
             return project.name
-        parts = [project.name]
-        if act.get("running"):
-            parts.append(f"● {act['running']}")
-        if act.get("done"):
-            parts.append("✓")
-        return "  ".join(parts)
+        if act.get("bg_working"):
+            badge = self._SPINNER[self._spinner_frame % len(self._SPINNER)]
+        elif act.get("done"):
+            badge = "●"
+        else:
+            badge = "○"
+        return f"{project.name}  {badge}"
 
     def _refresh_list(self) -> None:
         lv = self.query_one("#project-listview", ListView)
@@ -68,9 +76,30 @@ class ProjectList(Vertical):
         self._config = config
         self._refresh_list()
 
+    def move_highlighted(self, delta: int) -> None:
+        lv = self.query_one("#project-listview", ListView)
+        idx = lv.index
+        if idx is None:
+            return
+        project = self.highlighted_project
+        if project is None:
+            return
+        if self._config.move_project(project, delta):
+            self._refresh_list()
+            lv.index = idx + delta
+
     def update_activity(self, activity: dict[str, dict]) -> None:
-        """Update per-project badges in place, preserving the cursor."""
+        """Store new activity and refresh badges in place."""
         self._activity = activity
+        self._apply_labels()
+
+    def tick_spinner(self) -> None:
+        """Advance the spinner frame and redraw only if there are bg_working sessions."""
+        self._spinner_frame += 1
+        if any(a.get("bg_working") for a in self._activity.values()):
+            self._apply_labels()
+
+    def _apply_labels(self) -> None:
         lv = self.query_one("#project-listview", ListView)
         for item in lv.children:
             project = getattr(item, "data", None)
