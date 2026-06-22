@@ -13,5 +13,8 @@ def _isolate_hooks(tmp_path, monkeypatch):
     share = tmp_path / "share-agentman"
     monkeypatch.setattr(hooks, "SHARE_DIR", share)
     monkeypatch.setattr(hooks, "DONE_DIR", share / "done")
+    monkeypatch.setattr(hooks, "WORKING_DIR", share / "working")
     monkeypatch.setattr(hooks, "HELPER", share / "stop-hook.py")
+    monkeypatch.setattr(hooks, "WORKING_HELPER", share / "pretool-hook.py")
     monkeypatch.setattr(hooks, "SETTINGS", tmp_path / "claude-settings.json")
+    monkeypatch.setattr(hooks, "_CLAUDE_PROJECTS", tmp_path / "claude-projects")

@@ -55,15 +55,45 @@ async def test_app_highlighting_project_loads_its_sessions(seeded):
         assert {s.session_id for s in sp._sessions} == {"b1"}
 
 
-async def test_activating_project_focuses_session_list(seeded):
+async def test_activating_project_opens_latest_session(seeded, monkeypatch):
+    opened = []
     app = AgentManApp(has_workspace=False)
+    monkeypatch.setattr(app, "_open", lambda path, sid: opened.append((path, sid)))
     async with app.run_test() as pilot:
         pl = app.query_one(ProjectList)
         pl.post_message(ProjectList.Activated(app._config.projects[0]))
         await pilot.pause()
-        sp = app.query_one(SessionPanel)
-        assert sp._project.name == "alpha"
-        assert app.query_one("#session-listview").has_focus
+    # alpha has a2 (timestamp 6000) and a1 (5000); newest first → a2
+    apath = app._config.projects[0].resolved_path
+    assert opened == [(apath, "a2")]
+
+
+async def test_activating_project_prefers_running_session(seeded, monkeypatch):
+    opened = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app, "_open", lambda path, sid: opened.append((path, sid)))
+    # a1 is parked in a background window (running)
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sa1"})
+    async with app.run_test() as pilot:
+        pl = app.query_one(ProjectList)
+        pl.post_message(ProjectList.Activated(app._config.projects[0]))
+        await pilot.pause()
+    apath = app._config.projects[0].resolved_path
+    assert opened == [(apath, "a1")]
+
+
+async def test_activating_project_prefers_inscope_session(seeded, monkeypatch):
+    opened = []
+    app = AgentManApp(has_workspace=True)
+    app._open_session_id = "a1"   # a1 is currently in scope
+    monkeypatch.setattr(app, "_open", lambda path, sid: opened.append((path, sid)))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sa2"})  # a2 also running
+    async with app.run_test() as pilot:
+        pl = app.query_one(ProjectList)
+        pl.post_message(ProjectList.Activated(app._config.projects[0]))
+        await pilot.pause()
+    apath = app._config.projects[0].resolved_path
+    assert opened == [(apath, "a1")]
 
 
 async def test_remove_project_drops_it_from_view_and_config(seeded):
@@ -178,13 +208,46 @@ def test_project_activity_counts(seeded, monkeypatch):
     app = AgentManApp(has_workspace=True)
     app._launched_projects = {"sAAA": "/p1", "sBBB": "/p1", "sCCC": "/p2"}
     app._sessions_by_key = {"sAAA": "idA", "sBBB": "idB", "sCCC": "idC"}
-    app._current_key = "sAAA"   # in scope, belongs to /p1
+    app._current_key = "sAAA"
+    app._open_session_id = "idA"
     monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sBBB", "sCCC"})
+    monkeypatch.setattr(hooks, "is_working", lambda sid: sid == "idC")
     monkeypatch.setattr(hooks, "is_done", lambda sid: sid == "idB")
 
     act = app._project_activity()
-    assert act["/p1"] == {"running": 2, "done": True}   # sAAA (scope) + sBBB (bg, done)
-    assert act["/p2"] == {"running": 1, "done": False}
+    # sAAA in scope, not working; sBBB bg done
+    assert act["/p1"] == {"open": 2, "bg_working": 0, "done": True}
+    # sCCC bg, actively working
+    assert act["/p2"] == {"open": 1, "bg_working": 1, "done": False}
+
+
+def test_project_activity_inscope_working_shows_spinner(seeded, monkeypatch):
+    """In-scope session that is actively working spins its project."""
+    app = AgentManApp(has_workspace=True)
+    app._launched_projects = {"sAAA": "/p1"}
+    app._sessions_by_key = {"sAAA": "idA"}
+    app._current_key = "sAAA"
+    app._open_session_id = "idA"
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    monkeypatch.setattr(hooks, "is_working", lambda sid: sid == "idA")
+    monkeypatch.setattr(hooks, "is_done", lambda sid: False)
+
+    act = app._project_activity()
+    assert act["/p1"] == {"open": 1, "bg_working": 1, "done": False}
+
+
+def test_project_activity_idle_session_shows_circle(seeded, monkeypatch):
+    """A session parked in background without active work shows ○, not spinner."""
+    app = AgentManApp(has_workspace=True)
+    app._launched_projects = {"sFRESH": "/p1"}
+    app._sessions_by_key = {"sFRESH": "fresh-id"}
+    app._current_key = None
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sFRESH"})
+    monkeypatch.setattr(hooks, "is_working", lambda sid: False)
+    monkeypatch.setattr(hooks, "is_done", lambda sid: False)
+
+    act = app._project_activity()
+    assert act["/p1"] == {"open": 1, "bg_working": 0, "done": False}
 
 
 async def test_kill_background_session(seeded, monkeypatch):

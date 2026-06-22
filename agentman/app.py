@@ -35,6 +35,8 @@ class AgentManApp(App):
         Binding("k", "kill_session", "Kill session"),
         Binding("o", "open_in_vscode", "Open in VS Code"),
         Binding("r", "refresh", "Refresh"),
+        Binding("shift+up", "move_project_up", "Move up", show=False),
+        Binding("shift+down", "move_project_down", "Move down", show=False),
         Binding("tab", "focus_next", "Switch panel", show=False),
     ]
 
@@ -49,6 +51,7 @@ class AgentManApp(App):
         self._sessions_by_key: dict[str, str] = {}   # key -> resume session id
         self._launched_projects: dict[str, str] = {}  # key -> resolved project path
         self._notified_done: set[str] = set()          # id8s already flagged done
+        self._last_running_keys: set[str] = set()      # cached from last slow poll
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -65,6 +68,7 @@ class AgentManApp(App):
             except Exception:
                 pass
             self.set_interval(3.0, self._poll_completions)
+            self.set_interval(0.15, self._tick_spinner)
 
     # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -88,28 +92,35 @@ class AgentManApp(App):
                 out.add(sid[:8])
         return out
 
-    def _project_activity(self) -> dict[str, dict]:
-        """Per-project counts of running launched sessions (+ any finished)."""
+    def _project_activity(self, running_keys: set[str] | None = None) -> dict[str, dict]:
+        """Per-project activity: open sessions, background working, and done.
+
+        Pass running_keys to skip the tmux subprocess (fast path using cache).
+        """
         act: dict[str, dict] = {}
-
-        def bump(path: str, done: bool) -> None:
-            a = act.setdefault(path, {"running": 0, "done": False})
-            a["running"] += 1
-            if done:
-                a["done"] = True
-
         if not self._has_workspace:
             return act
-        running = self._tmux.running_keys()
-        for key in running:
+        if running_keys is None:
+            running_keys = self._tmux.running_keys()
+            self._last_running_keys = running_keys
+        for key in running_keys:
             path = self._launched_projects.get(key)
             if not path:
                 continue
+            a = act.setdefault(path, {"open": 0, "bg_working": 0, "done": False})
+            a["open"] += 1
             sid = self._sessions_by_key.get(key)
-            bump(path, bool(sid and hooks.is_done(sid)))
-        # The in-scope session is active too, but not a background window.
+            if sid and hooks.is_working(sid):
+                a["bg_working"] += 1
+            elif sid and hooks.is_done(sid):
+                a["done"] = True
+        # The in-scope session is in pane 0.1, not a background window.
         if self._current_key and self._current_key in self._launched_projects:
-            bump(self._launched_projects[self._current_key], False)
+            path = self._launched_projects[self._current_key]
+            a = act.setdefault(path, {"open": 0, "bg_working": 0, "done": False})
+            a["open"] += 1
+            if self._open_session_id and hooks.is_working(self._open_session_id):
+                a["bg_working"] += 1
         return act
 
     def _reload_sessions(self, project: Project) -> None:
@@ -121,6 +132,8 @@ class AgentManApp(App):
         # If the in-scope claude exited, its pane is gone — drop the open state
         # so it stops showing as "● open".
         if self._current_key and not self._tmux.workspace_exists():
+            if self._open_session_id:
+                hooks.clear_working(self._open_session_id)
             self._open_session_id = None
             self._current_key = None
 
@@ -148,7 +161,23 @@ class AgentManApp(App):
     def on_project_list_activated(self, event: ProjectList.Activated) -> None:
         self._current_project = event.project
         self._reload_sessions(event.project)
-        self.query_one("#session-listview", ListView).focus()
+        sessions = self.query_one(SessionPanel)._sessions
+        if sessions:
+            self._open_best_session(event.project, sessions)
+
+    def _open_best_session(self, project: Project, sessions: list) -> None:
+        """Open the most relevant session: in-scope > running bg > latest."""
+        if self._open_session_id:
+            for s in sessions:
+                if s.session_id == self._open_session_id:
+                    self._open(project.resolved_path, s.session_id)
+                    return
+        running = self._running_id8s()
+        for s in sessions:
+            if s.session_id[:8] in running:
+                self._open(project.resolved_path, s.session_id)
+                return
+        self._open(project.resolved_path, sessions[0].session_id)
 
     def on_project_list_add_requested(self, event: ProjectList.AddRequested) -> None:
         self.action_add_project()
@@ -195,6 +224,7 @@ class AgentManApp(App):
         if prev_id:
             hooks.clear_done(prev_id)
         hooks.clear_done(session_id)
+        hooks.clear_working(session_id)
         self._notified_done.discard(session_id[:8])
 
         self._tmux.show_session(project_path, session_id, key, self._current_key, resume)
@@ -254,6 +284,7 @@ class AgentManApp(App):
         is_current = key == self._current_key
         self._tmux.kill(key, is_current)
         hooks.clear_done(session.session_id)
+        hooks.clear_working(session.session_id)
         self._sessions_by_key.pop(key, None)
         self._launched_projects.pop(key, None)
         self._notified_done.discard(session.session_id[:8])
@@ -282,6 +313,17 @@ class AgentManApp(App):
             self.notify("VS Code CLI ('code') not found on PATH", severity="error")
             return
         self.notify(f"Opening {project.name} in VS Code")
+
+    def _tick_spinner(self) -> None:
+        pl = self.query_one(ProjectList)
+        pl.update_activity(self._project_activity(self._last_running_keys))
+        pl.tick_spinner()
+
+    def action_move_project_up(self) -> None:
+        self.query_one(ProjectList).move_highlighted(-1)
+
+    def action_move_project_down(self) -> None:
+        self.query_one(ProjectList).move_highlighted(1)
 
     def action_refresh(self) -> None:
         if self._current_project:
