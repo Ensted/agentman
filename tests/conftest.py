@@ -16,5 +16,6 @@ def _isolate_hooks(tmp_path, monkeypatch):
     monkeypatch.setattr(hooks, "WORKING_DIR", share / "working")
     monkeypatch.setattr(hooks, "HELPER", share / "stop-hook.py")
     monkeypatch.setattr(hooks, "WORKING_HELPER", share / "pretool-hook.py")
+    monkeypatch.setattr(hooks, "SESSION_END_HELPER", share / "session-end-hook.py")
     monkeypatch.setattr(hooks, "SETTINGS", tmp_path / "claude-settings.json")
     monkeypatch.setattr(hooks, "_CLAUDE_PROJECTS", tmp_path / "claude-projects")
