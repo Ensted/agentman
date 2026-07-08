@@ -58,6 +58,37 @@ def test_bootstrap_disables_rename_and_enables_mouse():
     assert "/usr/bin/agentman" in new and "--inner" in new
 
 
+def test_clipboard_cmds_pipe_selections_when_tool_available(monkeypatch):
+    import agentman.tmux as tmux_mod
+    monkeypatch.setattr(tmux_mod, "_clipboard_command", lambda: "xsel -i -b")
+    cmds = Tmux.clipboard_cmds()
+    assert ["tmux", "set-option", "-g", "copy-command", "xsel -i -b"] in cmds
+    # Mouse-drag release and Enter both pipe the selection to the clipboard.
+    assert ["tmux", "bind-key", "-T", "copy-mode", "MouseDragEnd1Pane",
+            "send-keys", "-X", "copy-pipe-and-cancel"] in cmds
+    assert ["tmux", "bind-key", "-T", "copy-mode-vi", "Enter",
+            "send-keys", "-X", "copy-pipe-and-cancel"] in cmds
+
+
+def test_clipboard_cmds_osc52_only_without_tool(monkeypatch):
+    import agentman.tmux as tmux_mod
+    monkeypatch.setattr(tmux_mod, "_clipboard_command", lambda: None)
+    cmds = Tmux.clipboard_cmds()
+    assert cmds == [["tmux", "set-option", "-s", "set-clipboard", "on"]]
+
+
+def test_clipboard_command_prefers_wayland_tool(monkeypatch):
+    import agentman.tmux as tmux_mod
+    monkeypatch.setattr(tmux_mod.shutil, "which",
+                        lambda t: f"/usr/bin/{t}" if t in ("wl-copy", "xsel") else None)
+    assert tmux_mod._clipboard_command() == "wl-copy"
+    monkeypatch.setattr(tmux_mod.shutil, "which",
+                        lambda t: "/usr/bin/xsel" if t == "xsel" else None)
+    assert tmux_mod._clipboard_command() == "xsel -i -b"
+    monkeypatch.setattr(tmux_mod.shutil, "which", lambda t: None)
+    assert tmux_mod._clipboard_command() is None
+
+
 # ── show_session orchestration ─────────────────────────────────────────────────
 
 def test_show_first_session_spawns():

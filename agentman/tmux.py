@@ -7,8 +7,25 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 
+import shutil
+
+
 SESSION = "agentman"
 BROWSER_WIDTH = 44          # columns for the always-visible browser sidebar
+
+
+def _clipboard_command() -> str | None:
+    """External program that writes stdin to the system clipboard.
+
+    Fallback for terminals without OSC 52 support (e.g. Tilix): tmux pipes
+    copy-mode selections through this instead of relying on set-clipboard.
+    """
+    for tool, cmd in (("wl-copy", "wl-copy"),
+                      ("xclip", "xclip -i -selection clipboard"),
+                      ("xsel", "xsel -i -b")):
+        if shutil.which(tool):
+            return cmd
+    return None
 
 
 def _run(argv: list[str]) -> subprocess.CompletedProcess:
@@ -40,14 +57,31 @@ class Tmux:
     # ── command builders (pure) ────────────────────────────────────────────────
 
     @staticmethod
+    def clipboard_cmds() -> list[list[str]]:
+        """Options/bindings that route copied text to the system clipboard."""
+        cmds = [
+            # Let mouse/copy-mode selections reach the system clipboard via
+            # OSC 52 (needs a terminal that supports it).
+            ["tmux", "set-option", "-s", "set-clipboard", "on"],
+        ]
+        copy = _clipboard_command()
+        if copy:
+            # OSC 52 doesn't work everywhere (Tilix and other VTE apps), so
+            # also pipe finished selections through a clipboard tool.
+            cmds.append(["tmux", "set-option", "-g", "copy-command", copy])
+            for table in ("copy-mode", "copy-mode-vi"):
+                for key in ("MouseDragEnd1Pane", "Enter"):
+                    cmds.append(["tmux", "bind-key", "-T", table, key,
+                                 "send-keys", "-X", "copy-pipe-and-cancel"])
+        return cmds
+
+    @staticmethod
     def bootstrap_cmds(self_exe: str) -> list[list[str]]:
         """Build the session: a single browser pane, plus the options we rely on."""
         return [
             ["tmux", "new-session", "-d", "-s", SESSION, self_exe, "--inner"],
             ["tmux", "set-option", "-t", SESSION, "mouse", "on"],
-            # Let mouse/copy-mode selections reach the system clipboard via
-            # OSC 52 (needs a terminal that supports it).
-            ["tmux", "set-option", "-s", "set-clipboard", "on"],
+            *Tmux.clipboard_cmds(),
             # Keep our window names (am-<key>) stable so we can find bg sessions.
             ["tmux", "set-option", "-t", SESSION, "automatic-rename", "off"],
             ["tmux", "set-option", "-t", SESSION, "allow-rename", "off"],
