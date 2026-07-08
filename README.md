@@ -36,15 +36,17 @@ tears everything down (browser + all claude sessions in the session).
 | `↑` / `↓` | Navigate; highlighting a project loads its sessions |
 | `Enter`   | Open the highlighted session (or jump to sessions) |
 | `a`       | Add a project (directory picker)                  |
-| `d`       | Remove the highlighted project from the view      |
+| `d`       | Remove: project from the view, or delete the highlighted session (asks first) |
 | `n`       | New Claude session in the current project         |
 | `k`       | Kill the highlighted session (in-scope or background) |
 | `o`       | Open the current project folder in VS Code        |
 | `r`       | Refresh                                           |
 | `Ctrl+Q`  | Close agentman (detach) — sessions keep running   |
 
-Removing a project (`d`) only drops it from agentman's list — it never
-touches the folder or Claude's session history.
+`d` is context-sensitive and always asks for confirmation. On the project
+list it only drops the project from agentman's view — it never touches the
+folder or Claude's session history. On the session list it permanently
+deletes that one session: kills it if running and removes its transcript.
 
 `Ctrl+Q` detaches the whole tmux session: agentman closes from view and you
 return to your shell, but the browser and every running Claude session stay
