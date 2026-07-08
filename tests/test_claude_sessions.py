@@ -141,6 +141,87 @@ def test_missing_history_returns_empty(tmp_path, monkeypatch):
     assert load_sessions("/p") == []
 
 
+def _write_transcript(tmp_path, sid, lines):
+    path = tmp_path / "projects" / "p" / f"{sid}.jsonl"
+    path.write_text("\n".join(json.dumps(l) for l in lines) + "\n")
+    return path
+
+
+def test_ai_title_preferred_over_first_prompt(tmp_path, monkeypatch):
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "fix the thing pls", "timestamp": 1000},
+    ])
+    _write_transcript(tmp_path, "s1", [
+        {"type": "user", "message": "fix the thing pls"},
+        {"type": "ai-title", "aiTitle": "Fix spinner stuck on done sessions", "sessionId": "s1"},
+    ])
+    assert load_sessions("/p")[0].display == "Fix spinner stuck on done sessions"
+
+
+def test_last_ai_title_wins(tmp_path, monkeypatch):
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "x", "timestamp": 1000},
+    ])
+    _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "Old name", "sessionId": "s1"},
+        {"type": "user", "message": "more work"},
+        {"type": "ai-title", "aiTitle": "New name", "sessionId": "s1"},
+    ])
+    assert load_sessions("/p")[0].display == "New name"
+
+
+def test_ai_title_found_deep_in_large_transcript(tmp_path, monkeypatch):
+    """Title further back than one scan block from the end is still found."""
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "x", "timestamp": 1000},
+    ])
+    filler = [{"type": "assistant", "message": "y" * 1000}] * 200  # ≫ 64 KiB
+    _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "Buried title", "sessionId": "s1"},
+        *filler,
+    ])
+    assert load_sessions("/p")[0].display == "Buried title"
+
+
+def test_marker_inside_message_content_does_not_shadow_title(tmp_path, monkeypatch):
+    """A message merely *containing* the marker text is skipped over."""
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "x", "timestamp": 1000},
+    ])
+    _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "Real title", "sessionId": "s1"},
+        {"type": "user", "message": 'discussing the "ai-title" record format'},
+    ])
+    assert load_sessions("/p")[0].display == "Real title"
+
+
+def test_blank_ai_title_falls_back_to_prompt(tmp_path, monkeypatch):
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "real prompt", "timestamp": 1000},
+    ])
+    _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "   ", "sessionId": "s1"},
+    ])
+    assert load_sessions("/p")[0].display == "real prompt"
+
+
+def test_ai_title_cache_refreshes_on_change(tmp_path, monkeypatch):
+    import os
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "x", "timestamp": 1000},
+    ])
+    path = _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "First", "sessionId": "s1"},
+    ])
+    assert load_sessions("/p")[0].display == "First"
+    _write_transcript(tmp_path, "s1", [
+        {"type": "ai-title", "aiTitle": "Second", "sessionId": "s1"},
+    ])
+    st = path.stat()
+    os.utime(path, (st.st_atime, st.st_mtime + 1))  # ensure mtime moves
+    assert load_sessions("/p")[0].display == "Second"
+
+
 def test_relative_time_buckets():
     now = datetime.now(tz=timezone.utc)
     from datetime import timedelta

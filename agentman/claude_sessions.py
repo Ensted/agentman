@@ -10,15 +10,78 @@ HISTORY_FILE = Path.home() / ".claude" / "history.jsonl"
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 
 
-def _resumable_ids() -> set[str]:
-    """Session IDs that have a transcript file, i.e. can actually be resumed.
+def _transcripts() -> dict[str, Path]:
+    """Map session id → transcript file. Only these sessions can be resumed.
 
     history.jsonl lists sessions that may have no transcript (claude --resume
     fails on those and the pane closes instantly), so we filter to real ones.
     """
     if not PROJECTS_DIR.exists():
-        return set()
-    return {f.stem for f in PROJECTS_DIR.glob("*/*.jsonl")}
+        return {}
+    return {f.stem: f for f in PROJECTS_DIR.glob("*/*.jsonl")}
+
+
+_TITLE_MARKER = b'"ai-title"'
+_TITLE_BLOCK = 64 * 1024
+_title_cache: dict[str, tuple[float, str | None]] = {}  # path -> (mtime, title)
+
+
+def ai_title(transcript: Path) -> str | None:
+    """Claude Code's own name for the session (its latest ai-title record)."""
+    try:
+        mtime = transcript.stat().st_mtime
+    except OSError:
+        return None
+    cached = _title_cache.get(str(transcript))
+    if cached and cached[0] == mtime:
+        return cached[1]
+    title = _find_last_title(transcript)
+    _title_cache[str(transcript)] = (mtime, title)
+    return title
+
+
+def _parse_title_line(line: bytes) -> str | None:
+    try:
+        entry = json.loads(line)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(entry, dict) or entry.get("type") != "ai-title":
+        return None
+    title = entry.get("aiTitle")
+    return title if isinstance(title, str) and title.strip() else None
+
+
+def _find_last_title(transcript: Path) -> str | None:
+    # ai-title records are re-appended throughout the session, so the newest
+    # one sits near the end — scan backwards in blocks, not the whole file.
+    # The marker bytes can also occur inside ordinary message content, so each
+    # candidate line is parsed and verified before we accept it.
+    try:
+        with transcript.open("rb") as f:
+            f.seek(0, 2)
+            end = f.tell()
+            buf = b""
+            while True:
+                start = max(0, end - _TITLE_BLOCK)
+                f.seek(start)
+                buf = f.read(end - start) + buf
+                pos = len(buf)
+                while (idx := buf.rfind(_TITLE_MARKER, 0, pos)) != -1:
+                    nl = buf.rfind(b"\n", 0, idx)
+                    if nl == -1 and start > 0:
+                        break  # line begins before the buffer; read more first
+                    line_end = buf.find(b"\n", idx)
+                    if line_end == -1:
+                        line_end = len(buf)
+                    title = _parse_title_line(buf[nl + 1:line_end])
+                    if title:
+                        return title
+                    pos = nl + 1  # not a title record; keep scanning backwards
+                if start == 0:
+                    return None
+                end = start
+    except OSError:
+        return None
 
 
 @dataclass
@@ -118,13 +181,17 @@ def load_sessions(project_path: str) -> list[ClaudeSession]:
 
     # Drop sessions with no transcript file — they can't be resumed and would
     # just close the pane on open.
-    resumable = _resumable_ids()
-    by_id = {sid: s for sid, s in by_id.items() if sid in resumable}
+    transcripts = _transcripts()
+    by_id = {sid: s for sid, s in by_id.items() if sid in transcripts}
 
-    # Sessions whose only prompts were commands (exit, slash commands, bare
-    # pastes) have no meaningful title — label them clearly. Otherwise tidy up.
+    # Prefer the name Claude Code itself gave the session. Fall back to the
+    # first meaningful prompt; sessions with neither (only slash commands,
+    # bare pastes, etc.) get a clear placeholder.
     for s in by_id.values():
-        if _is_noise(s.display):
+        title = ai_title(transcripts[s.session_id])
+        if title:
+            s.display = clean_title(title)
+        elif _is_noise(s.display):
             s.display = f"(untitled · {s.session_id[:8]})"
         else:
             s.display = clean_title(s.display)
