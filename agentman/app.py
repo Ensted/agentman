@@ -36,6 +36,7 @@ class AgentManApp(App):
         Binding("d", "remove", "Remove"),
         Binding("n", "new_session", "New session"),
         Binding("k", "kill_session", "Kill session"),
+        Binding("z", "zoom_session", "Fullscreen"),
         Binding("o", "open_in_vscode", "Open in VS Code"),
         Binding("r", "refresh", "Refresh"),
         Binding("s", "sort_projects", "Sort"),
@@ -370,6 +371,13 @@ class AgentManApp(App):
             self._open_session_id = None
         if self._current_project:
             self._reload_sessions(self._current_project)
+
+    def action_zoom_session(self) -> None:
+        if not self._has_workspace:
+            return
+        if not self._tmux.zoom_workspace():
+            self.bell()
+            self.notify("No open session to fullscreen", severity="warning")
 
     def action_open_in_vscode(self) -> None:
         project = self._current_project

@@ -384,6 +384,42 @@ async def test_kill_current_session(seeded, monkeypatch):
         assert app._current_key is None and app._open_session_id is None
 
 
+async def test_zoom_fullscreens_open_session(seeded, monkeypatch):
+    zoomed = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "zoom_workspace", lambda: zoomed.append(1) or True)
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("z")
+        await pilot.pause()
+    assert zoomed == [1]
+
+
+async def test_zoom_warns_when_nothing_open(seeded, monkeypatch):
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "zoom_workspace", lambda: False)
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: set())
+    bells = []
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        monkeypatch.setattr(app, "bell", lambda: bells.append(1))
+        await pilot.press("z")
+        await pilot.pause()
+    assert bells == [1]
+
+
+async def test_zoom_noop_without_workspace(seeded, monkeypatch):
+    zoomed = []
+    app = AgentManApp(has_workspace=False)
+    monkeypatch.setattr(app._tmux, "zoom_workspace", lambda: zoomed.append(1) or True)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("z")
+        await pilot.pause()
+    assert zoomed == []
+
+
 async def test_open_in_vscode_launches_code(seeded, monkeypatch):
     import agentman.app as appmod
     launched = []

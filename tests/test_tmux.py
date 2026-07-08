@@ -123,6 +123,23 @@ def test_workspace_exists_false_when_only_browser():
     assert Tmux(capture=capture).workspace_exists() is False
 
 
+def test_zoom_workspace_focuses_then_zooms():
+    runner = FakeRunner()
+    capture = FakeRunner(stdout="0\n1\n", returncode=0)   # claude pane present
+    assert Tmux(runner=runner, capture=capture).zoom_workspace() is True
+    assert runner.calls == [
+        ["tmux", "select-pane", "-t", f"{SESSION}:0.1"],
+        ["tmux", "resize-pane", "-t", f"{SESSION}:0.1", "-Z"],
+    ]
+
+
+def test_zoom_workspace_noop_without_session():
+    runner = FakeRunner()
+    capture = FakeRunner(stdout="0\n", returncode=0)      # browser only
+    assert Tmux(runner=runner, capture=capture).zoom_workspace() is False
+    assert runner.calls == []
+
+
 def test_detach_targets_the_session():
     runner = FakeRunner()
     Tmux(runner=runner).detach()

@@ -120,6 +120,10 @@ class Tmux:
         return ["tmux", "kill-window", "-t", Tmux.bg_window(key)]
 
     @staticmethod
+    def zoom_workspace_cmd() -> list[str]:
+        return ["tmux", "resize-pane", "-t", f"{SESSION}:0.1", "-Z"]
+
+    @staticmethod
     def browser_width_cmd() -> list[str]:
         return ["tmux", "resize-pane", "-t", f"{SESSION}:0.0", "-x", str(BROWSER_WIDTH)]
 
@@ -151,6 +155,18 @@ class Tmux:
             self.runner(self.kill_workspace_cmd())
         else:
             self.runner(self.kill_bg_cmd(key))
+
+    def zoom_workspace(self) -> bool:
+        """Fullscreen the in-scope claude pane (tmux zoom), hiding the browser.
+
+        Ctrl+b z (or another zoom) restores the split layout. Returns False
+        when no session is in scope.
+        """
+        if not self.workspace_exists():
+            return False
+        self.runner(self.select_workspace_cmd())
+        self.runner(self.zoom_workspace_cmd())
+        return True
 
     def _window_names(self) -> list[str]:
         result = self.capture(self.list_windows_cmd())

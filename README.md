@@ -39,6 +39,7 @@ tears everything down (browser + all claude sessions in the session).
 | `d`       | Remove: project from the view, or delete the highlighted session (asks first) |
 | `n`       | New Claude session in the current project         |
 | `k`       | Kill the highlighted session (in-scope or background) |
+| `z`       | Fullscreen the open session (hides the sidebar)   |
 | `o`       | Open the current project folder in VS Code        |
 | `r`       | Refresh                                           |
 | `Ctrl+Q`  | Close agentman (detach) — sessions keep running   |
@@ -52,6 +53,10 @@ deletes that one session: kills it if running and removes its transcript.
 return to your shell, but the browser and every running Claude session stay
 alive in the background. Run `agentman` again to re-attach right where you
 left off.
+
+`z` zooms the open session to the full terminal (the sidebar disappears).
+Press `Ctrl+b z` inside the session to bring the sidebar back — it's plain
+tmux pane zoom, so it also works the other way around.
 
 Inside a session, detach from tmux with `Ctrl+b d` to return to agentman.
 
