@@ -310,11 +310,14 @@ class AgentManApp(App):
     def _delete_session(self, session: ClaudeSession) -> None:
         sid = session.session_id
         key = _resume_key(sid)
+        killed = False
         if self._has_workspace:
             if key == self._current_key and self._tmux.workspace_exists():
                 self._tmux.kill(key, True)
+                killed = True
             elif key in self._tmux.running_keys():
                 self._tmux.kill(key, False)
+                killed = True
         hooks.clear_done(sid)
         hooks.clear_working(sid)
         self._sessions_by_key.pop(key, None)
@@ -324,6 +327,11 @@ class AgentManApp(App):
             self._current_key = None
             self._open_session_id = None
         claude_sessions.delete_session(sid)
+        if killed:
+            # The dying claude flushes its final records on shutdown, which can
+            # recreate the transcript as a stub after we removed it. Sweep again
+            # once the process has had time to exit.
+            self.set_timer(2.0, lambda: claude_sessions.delete_session(sid))
         if self._current_project:
             self._reload_sessions(self._current_project)
 

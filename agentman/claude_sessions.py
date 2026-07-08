@@ -22,6 +22,36 @@ def _transcripts() -> dict[str, Path]:
     return {f.stem: f for f in PROJECTS_DIR.glob("*/*.jsonl")}
 
 
+# A resumable session must hold actual conversation, not just metadata.
+# Killing a running claude can recreate its just-deleted transcript as a
+# metadata-only stub (last-prompt/ai-title/mode records) during shutdown —
+# Claude Code hides those from --resume, so must we.
+_CONVO_HINTS = (b'"type":"user"', b'"type": "user"',
+                b'"type":"assistant"', b'"type": "assistant"')
+_convo_cache: dict[str, tuple[float, bool]] = {}  # path -> (mtime, result)
+
+
+def _has_conversation(transcript: Path) -> bool:
+    try:
+        mtime = transcript.stat().st_mtime
+    except OSError:
+        return False
+    cached = _convo_cache.get(str(transcript))
+    if cached and cached[0] == mtime:
+        return cached[1]
+    found = False
+    try:
+        with transcript.open("rb") as f:
+            for line in f:
+                if any(hint in line for hint in _CONVO_HINTS):
+                    found = True
+                    break
+    except OSError:
+        pass
+    _convo_cache[str(transcript)] = (mtime, found)
+    return found
+
+
 _TITLE_MARKER = b'"ai-title"'
 _TITLE_BLOCK = 64 * 1024
 _title_cache: dict[str, tuple[float, str | None]] = {}  # path -> (mtime, title)
@@ -180,10 +210,11 @@ def load_sessions(project_path: str) -> list[ClaudeSession]:
                 if _is_noise(existing.display) and not _is_noise(display):
                     existing.display = display
 
-    # Drop sessions with no transcript file — they can't be resumed and would
-    # just close the pane on open.
+    # Drop sessions with no transcript file (or a metadata-only stub of one)
+    # — they can't be resumed and would just close the pane on open.
     transcripts = _transcripts()
-    by_id = {sid: s for sid, s in by_id.items() if sid in transcripts}
+    by_id = {sid: s for sid, s in by_id.items()
+             if sid in transcripts and _has_conversation(transcripts[sid])}
 
     # Prefer the name Claude Code itself gave the session. Fall back to the
     # first meaningful prompt; sessions with neither (only slash commands,

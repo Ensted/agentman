@@ -35,7 +35,8 @@ def seeded(tmp_path, monkeypatch):
     proj = tmp_path / "projects" / "x"
     proj.mkdir(parents=True)
     for r in rows:
-        (proj / f"{r['sessionId']}.jsonl").write_text("{}")
+        (proj / f"{r['sessionId']}.jsonl").write_text(
+            '{"type":"user","message":{"role":"user"}}')
     monkeypatch.setattr(cs, "PROJECTS_DIR", tmp_path / "projects")
 
 

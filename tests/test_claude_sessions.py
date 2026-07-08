@@ -5,6 +5,10 @@ import agentman.claude_sessions as cs
 from agentman.claude_sessions import load_sessions, relative_time, _parse_ts
 
 
+# Minimal transcript content that counts as a real conversation.
+CONVO_LINE = '{"type":"user","message":{"role":"user"}}'
+
+
 def _write_history(tmp_path, monkeypatch, rows, transcripts=True):
     path = tmp_path / "history.jsonl"
     path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
@@ -16,7 +20,7 @@ def _write_history(tmp_path, monkeypatch, rows, transcripts=True):
         for r in rows:
             sid = r.get("sessionId")
             if sid:
-                (proj / f"{sid}.jsonl").write_text("{}")
+                (proj / f"{sid}.jsonl").write_text(CONVO_LINE)
     monkeypatch.setattr(cs, "PROJECTS_DIR", tmp_path / "projects")
     return path
 
@@ -120,7 +124,7 @@ def test_skips_malformed_lines(tmp_path, monkeypatch):
     monkeypatch.setattr(cs, "HISTORY_FILE", path)
     proj = tmp_path / "projects" / "p"
     proj.mkdir(parents=True)
-    (proj / "a.jsonl").write_text("{}")
+    (proj / "a.jsonl").write_text(CONVO_LINE)
     monkeypatch.setattr(cs, "PROJECTS_DIR", tmp_path / "projects")
     assert len(load_sessions("/p")) == 1
 
@@ -132,7 +136,7 @@ def test_session_without_transcript_is_dropped(tmp_path, monkeypatch):
         {"sessionId": "b", "project": "/p", "display": "ghost", "timestamp": 2000},
     ], transcripts=False)
     proj = tmp_path / "projects" / "p"
-    (proj / "a.jsonl").write_text("{}")  # only 'a' gets a transcript
+    (proj / "a.jsonl").write_text(CONVO_LINE)  # only 'a' gets a transcript
     assert [s.session_id for s in load_sessions("/p")] == ["a"]
 
 
@@ -200,6 +204,7 @@ def test_blank_ai_title_falls_back_to_prompt(tmp_path, monkeypatch):
         {"sessionId": "s1", "project": "/p", "display": "real prompt", "timestamp": 1000},
     ])
     _write_transcript(tmp_path, "s1", [
+        {"type": "user", "message": {"role": "user"}},
         {"type": "ai-title", "aiTitle": "   ", "sessionId": "s1"},
     ])
     assert load_sessions("/p")[0].display == "real prompt"
@@ -211,15 +216,32 @@ def test_ai_title_cache_refreshes_on_change(tmp_path, monkeypatch):
         {"sessionId": "s1", "project": "/p", "display": "x", "timestamp": 1000},
     ])
     path = _write_transcript(tmp_path, "s1", [
+        {"type": "user", "message": {"role": "user"}},
         {"type": "ai-title", "aiTitle": "First", "sessionId": "s1"},
     ])
     assert load_sessions("/p")[0].display == "First"
     _write_transcript(tmp_path, "s1", [
+        {"type": "user", "message": {"role": "user"}},
         {"type": "ai-title", "aiTitle": "Second", "sessionId": "s1"},
     ])
     st = path.stat()
     os.utime(path, (st.st_atime, st.st_mtime + 1))  # ensure mtime moves
     assert load_sessions("/p")[0].display == "Second"
+
+
+def test_metadata_only_stub_is_dropped(tmp_path, monkeypatch):
+    """Killing a running claude can recreate its deleted transcript as a
+    metadata-only stub — those must not reappear in the session list."""
+    _write_history(tmp_path, monkeypatch, [
+        {"sessionId": "s1", "project": "/p", "display": "count to 10", "timestamp": 1000},
+    ])
+    _write_transcript(tmp_path, "s1", [
+        {"type": "last-prompt", "lastPrompt": "count to 10", "sessionId": "s1"},
+        {"type": "ai-title", "aiTitle": "Count to 10", "sessionId": "s1"},
+        {"type": "mode", "mode": "normal", "sessionId": "s1"},
+        {"type": "permission-mode", "permissionMode": "default", "sessionId": "s1"},
+    ])
+    assert load_sessions("/p") == []
 
 
 def test_delete_session_removes_transcript_and_data_dir(tmp_path, monkeypatch):
