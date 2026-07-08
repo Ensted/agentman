@@ -50,6 +50,7 @@ def test_bootstrap_disables_rename_and_enables_mouse():
     assert verbs[0] == "new-session"
     assert verbs[-1] == "attach-session"
     assert ["tmux", "set-option", "-t", SESSION, "mouse", "on"] in cmds
+    assert ["tmux", "set-option", "-s", "set-clipboard", "on"] in cmds
     assert ["tmux", "set-option", "-t", SESSION, "automatic-rename", "off"] in cmds
     assert ["tmux", "set-option", "-t", SESSION, "allow-rename", "off"] in cmds
     # The browser runs agentman --inner as pane 0.

@@ -45,6 +45,9 @@ class Tmux:
         return [
             ["tmux", "new-session", "-d", "-s", SESSION, self_exe, "--inner"],
             ["tmux", "set-option", "-t", SESSION, "mouse", "on"],
+            # Let mouse/copy-mode selections reach the system clipboard via
+            # OSC 52 (needs a terminal that supports it).
+            ["tmux", "set-option", "-s", "set-clipboard", "on"],
             # Keep our window names (am-<key>) stable so we can find bg sessions.
             ["tmux", "set-option", "-t", SESSION, "automatic-rename", "off"],
             ["tmux", "set-option", "-t", SESSION, "allow-rename", "off"],
