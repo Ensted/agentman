@@ -114,3 +114,32 @@ DirectoryTree {
 #dir-picker-buttons Button {
     margin: 0 1;
 }
+
+#confirm-dialog {
+    width: 64;
+    max-width: 90%;
+    height: auto;
+    border: solid $primary;
+    background: $surface;
+    padding: 1 2;
+}
+
+#confirm-question {
+    text-style: bold;
+}
+
+#confirm-detail {
+    color: $text-muted;
+    margin-top: 1;
+}
+
+#confirm-buttons {
+    layout: horizontal;
+    height: 3;
+    align: right middle;
+    margin-top: 1;
+}
+
+#confirm-buttons Button {
+    margin: 0 1;
+}

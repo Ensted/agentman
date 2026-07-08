@@ -222,6 +222,23 @@ def test_ai_title_cache_refreshes_on_change(tmp_path, monkeypatch):
     assert load_sessions("/p")[0].display == "Second"
 
 
+def test_delete_session_removes_transcript_and_data_dir(tmp_path, monkeypatch):
+    from agentman.claude_sessions import delete_session
+    proj = tmp_path / "projects" / "p"
+    (proj / "s1").mkdir(parents=True)                      # per-session data dir
+    (proj / "s1" / "tool-results").mkdir()
+    (proj / "s1.jsonl").write_text("{}")
+    (proj / "other.jsonl").write_text("{}")
+    monkeypatch.setattr(cs, "PROJECTS_DIR", tmp_path / "projects")
+
+    assert delete_session("s1") is True
+    assert not (proj / "s1.jsonl").exists()
+    assert not (proj / "s1").exists()
+    assert (proj / "other.jsonl").exists()                 # untouched
+
+    assert delete_session("s1") is False                   # already gone
+
+
 def test_relative_time_buckets():
     now = datetime.now(tz=timezone.utc)
     from datetime import timedelta

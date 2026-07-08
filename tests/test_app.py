@@ -96,8 +96,9 @@ async def test_activating_project_prefers_inscope_session(seeded, monkeypatch):
     assert opened == [(apath, "a1")]
 
 
-async def test_remove_project_drops_it_from_view_and_config(seeded):
+async def test_remove_project_confirms_then_drops_it(seeded):
     from textual.widgets import ListView
+    from agentman.ui.confirm import ConfirmModal
     app = AgentManApp(has_workspace=False)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -107,7 +108,10 @@ async def test_remove_project_drops_it_from_view_and_config(seeded):
         await pilot.pause()
         first = pl.highlighted_project
         assert first is not None
-        await app.run_action("remove_project")
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmModal)   # asks before removing
+        await pilot.press("y")
         await pilot.pause()
         names = [p.name for p in app._config.projects]
         assert first.name not in names
@@ -115,6 +119,96 @@ async def test_remove_project_drops_it_from_view_and_config(seeded):
     # Persisted to disk too.
     from agentman.config import Config
     assert first.name not in [p.name for p in Config.load().projects]
+
+
+async def test_remove_project_cancelled_keeps_it(seeded):
+    from textual.widgets import ListView
+    from agentman.ui.confirm import ConfirmModal
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one("#project-listview", ListView).index = 0
+        await pilot.pause()
+        first = app.query_one(ProjectList).highlighted_project
+        before = [p.name for p in app._config.projects]
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmModal)
+        await pilot.press("n")
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmModal)
+        assert [p.name for p in app._config.projects] == before
+        assert first is not None
+
+
+async def test_d_on_session_list_deletes_only_that_session(seeded, tmp_path):
+    from textual.widgets import ListView
+    from agentman.ui.confirm import ConfirmModal
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sp = app.query_one(SessionPanel)
+        app._current_project = app._config.projects[0]
+        sp.load_project(app._config.projects[0])
+        await pilot.pause()
+        lv = app.query_one("#session-listview", ListView)
+        lv.focus()
+        lv.index = 0                        # a2 (newest first)
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmModal)
+        await pilot.press("y")
+        await pilot.pause()
+        # Only a2 is gone — transcript deleted, a1 still listed and on disk.
+        assert not (tmp_path / "projects" / "x" / "a2.jsonl").exists()
+        assert (tmp_path / "projects" / "x" / "a1.jsonl").exists()
+        assert [s.session_id for s in sp._sessions] == ["a1"]
+        # The project itself is untouched.
+        assert [p.name for p in app._config.projects] == ["alpha", "beta"]
+
+
+async def test_d_on_session_list_cancelled_deletes_nothing(seeded, tmp_path):
+    from textual.widgets import ListView
+    from agentman.ui.confirm import ConfirmModal
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sp = app.query_one(SessionPanel)
+        app._current_project = app._config.projects[0]
+        sp.load_project(app._config.projects[0])
+        await pilot.pause()
+        lv = app.query_one("#session-listview", ListView)
+        lv.focus()
+        lv.index = 0
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmModal)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert (tmp_path / "projects" / "x" / "a2.jsonl").exists()
+        assert {s.session_id for s in sp._sessions} == {"a1", "a2"}
+
+
+async def test_delete_running_session_kills_its_window(seeded, monkeypatch, tmp_path):
+    from textual.widgets import ListView
+    killed = []
+    app = AgentManApp(has_workspace=True)
+    monkeypatch.setattr(app._tmux, "kill", lambda key, cur: killed.append((key, cur)))
+    monkeypatch.setattr(app._tmux, "running_keys", lambda: {"sa2"})
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        sp = app.query_one(SessionPanel)
+        app._current_project = app._config.projects[0]
+        sp.load_project(app._config.projects[0])
+        await pilot.pause()
+        app.query_one("#session-listview", ListView).index = 0  # a2
+        await pilot.pause()
+        app._delete_session(sp._sessions[0])
+        await pilot.pause()
+    assert killed == [("sa2", False)]   # background window killed first
+    assert not (tmp_path / "projects" / "x" / "a2.jsonl").exists()
 
 
 async def test_ctrl_q_detaches_when_in_workspace(seeded, monkeypatch):

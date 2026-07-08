@@ -9,9 +9,11 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Footer, Header, ListView
 
-from agentman import hooks
+from agentman import claude_sessions, hooks
+from agentman.claude_sessions import ClaudeSession
 from agentman.config import Config, Project
 from agentman.tmux import Tmux
+from agentman.ui.confirm import ConfirmModal
 from agentman.ui.project_list import ProjectList
 from agentman.ui.session_panel import SessionPanel
 from agentman.ui.dir_picker import DirPickerModal
@@ -30,7 +32,7 @@ class AgentManApp(App):
         Binding("ctrl+q", "close_app", "Quit"),
         Binding("q", "close_app", "Quit", show=False),
         Binding("a", "add_project", "Add project"),
-        Binding("d", "remove_project", "Remove project"),
+        Binding("d", "remove", "Remove"),
         Binding("n", "new_session", "New session"),
         Binding("k", "kill_session", "Kill session"),
         Binding("o", "open_in_vscode", "Open in VS Code"),
@@ -255,11 +257,32 @@ class AgentManApp(App):
     def action_add_project(self) -> None:
         self.push_screen(DirPickerModal(), self._on_dir_picked)
 
+    def action_remove(self) -> None:
+        # Context-sensitive: with the session list focused, delete that one
+        # session; otherwise remove the highlighted project.
+        focused = self.focused
+        if focused is not None and focused.id == "session-listview":
+            self.action_delete_session()
+        else:
+            self.action_remove_project()
+
     def action_remove_project(self) -> None:
         pl = self.query_one(ProjectList)
         project = pl.highlighted_project or self._current_project
         if project is None:
             return
+
+        def confirmed(yes: bool | None) -> None:
+            if yes:
+                self._remove_project(project)
+
+        self.push_screen(ConfirmModal(
+            f"Remove project “{project.name}”?",
+            "Only removes it from agentman — files and sessions are kept.",
+            confirm_label="Remove"), confirmed)
+
+    def _remove_project(self, project: Project) -> None:
+        pl = self.query_one(ProjectList)
         self._config.remove_project(project)
         pl.reload(self._config)
         sp = self.query_one(SessionPanel)
@@ -269,6 +292,40 @@ class AgentManApp(App):
             self._reload_sessions(remaining)
         else:
             sp.clear()
+
+    def action_delete_session(self) -> None:
+        session = self.query_one(SessionPanel).highlighted_session
+        if session is None:
+            return
+
+        def confirmed(yes: bool | None) -> None:
+            if yes:
+                self._delete_session(session)
+
+        self.push_screen(ConfirmModal(
+            f"Delete session “{session.display}”?",
+            "Kills it if running and permanently deletes its history.",
+            confirm_label="Delete"), confirmed)
+
+    def _delete_session(self, session: ClaudeSession) -> None:
+        sid = session.session_id
+        key = _resume_key(sid)
+        if self._has_workspace:
+            if key == self._current_key and self._tmux.workspace_exists():
+                self._tmux.kill(key, True)
+            elif key in self._tmux.running_keys():
+                self._tmux.kill(key, False)
+        hooks.clear_done(sid)
+        hooks.clear_working(sid)
+        self._sessions_by_key.pop(key, None)
+        self._launched_projects.pop(key, None)
+        self._notified_done.discard(sid[:8])
+        if key == self._current_key:
+            self._current_key = None
+            self._open_session_id = None
+        claude_sessions.delete_session(sid)
+        if self._current_project:
+            self._reload_sessions(self._current_project)
 
     def action_new_session(self) -> None:
         if self._current_project:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import re
+import shutil
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -199,6 +200,25 @@ def load_sessions(project_path: str) -> list[ClaudeSession]:
     sessions = list(by_id.values())
     sessions.sort(key=lambda s: s.timestamp, reverse=True)
     return sessions
+
+
+def delete_session(session_id: str) -> bool:
+    """Permanently delete a session's transcript and per-session data.
+
+    Sessions without a transcript are dropped from listings, so this also
+    removes it from the UI. Returns True if anything was deleted.
+    """
+    removed = False
+    for transcript in PROJECTS_DIR.glob(f"*/{session_id}.jsonl"):
+        try:
+            transcript.unlink()
+            removed = True
+        except OSError:
+            continue
+        extra = transcript.with_suffix("")  # <sid>/ dir: subagents, tool results
+        if extra.is_dir():
+            shutil.rmtree(extra, ignore_errors=True)
+    return removed
 
 
 def relative_time(ts: datetime) -> str:
