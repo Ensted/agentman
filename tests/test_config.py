@@ -136,3 +136,34 @@ def test_move_project_at_boundary_is_noop():
 def test_move_project_unknown_is_noop():
     cfg = Config(projects=[Project("a", "/a")])
     assert cfg.move_project(Project("z", "/z"), -1) is False
+
+
+def test_load_sorts_legacy_config_once(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", cfg_path)
+
+    # A config.toml written before the projects_sorted flag existed.
+    cfg_path.write_text(
+        '[[projects]]\nname = "zeta"\npath = "/z"\n'
+        '[[projects]]\nname = "alpha"\npath = "/a"\n'
+    )
+
+    loaded = Config.load()
+    assert [p.name for p in loaded.projects] == ["alpha", "zeta"]
+    assert loaded.projects_sorted is True
+
+    # Manually re-order after the one-time sort; a later reload must
+    # preserve it rather than re-sorting alphabetically again.
+    loaded.move_project(loaded.projects[1], -1)
+    reloaded = Config.load()
+    assert [p.name for p in reloaded.projects] == ["zeta", "alpha"]
+
+
+def test_add_project_inserts_alphabetically(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "config.toml"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", cfg_path)
+
+    cfg = Config(projects=[Project("alpha", "/a"), Project("zeta", "/z")])
+    cfg.add_project("mid", str(tmp_path))
+
+    assert [p.name for p in cfg.projects] == ["alpha", "mid", "zeta"]

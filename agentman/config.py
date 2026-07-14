@@ -1,4 +1,5 @@
 from __future__ import annotations
+import bisect
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -21,6 +22,7 @@ class Project:
 @dataclass
 class Config:
     projects: list[Project] = field(default_factory=list)
+    projects_sorted: bool = True
 
     @classmethod
     def load(cls) -> Config:
@@ -32,7 +34,15 @@ class Config:
             Project(name=p["name"], path=p["path"])
             for p in data.get("projects", [])
         ]
-        return cls(projects=projects)
+        # Legacy configs predate the projects_sorted flag; alphabetize them
+        # once so existing installs pick up the new default order too.
+        projects_sorted = data.get("projects_sorted", False)
+        cfg = cls(projects=projects, projects_sorted=projects_sorted)
+        if not projects_sorted:
+            cfg.projects.sort(key=lambda p: p.name.casefold())
+            cfg.projects_sorted = True
+            cfg.save()
+        return cfg
 
     def save(self) -> None:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -40,6 +50,7 @@ class Config:
 
     def dumps(self) -> str:
         doc = tomlkit.document()
+        doc["projects_sorted"] = self.projects_sorted
         aot = tomlkit.aot()
         for project in self.projects:
             t = tomlkit.table()
@@ -53,7 +64,9 @@ class Config:
         if any(p.resolved_path == str(Path(path).expanduser().resolve())
                for p in self.projects):
             return  # already present
-        self.projects.append(Project(name=name, path=path))
+        keys = [p.name.casefold() for p in self.projects]
+        idx = bisect.bisect_left(keys, name.casefold())
+        self.projects.insert(idx, Project(name=name, path=path))
         self.save()
 
     def remove_project(self, project: Project) -> None:
