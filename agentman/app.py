@@ -17,6 +17,7 @@ from agentman.ui.confirm import ConfirmModal
 from agentman.ui.project_list import ProjectList
 from agentman.ui.session_panel import SessionPanel
 from agentman.ui.dir_picker import DirPickerModal
+from agentman.ui.sort_modal import SortModal
 
 
 def _resume_key(session_id: str) -> str:
@@ -37,6 +38,7 @@ class AgentManApp(App):
         Binding("k", "kill_session", "Kill session"),
         Binding("o", "open_in_vscode", "Open in VS Code"),
         Binding("r", "refresh", "Refresh"),
+        Binding("s", "sort_projects", "Sort"),
         Binding("shift+up", "move_project_up", "Move up", show=False),
         Binding("shift+down", "move_project_down", "Move down", show=False),
         Binding("tab", "focus_next", "Switch panel", show=False),
@@ -256,6 +258,16 @@ class AgentManApp(App):
 
     def action_add_project(self) -> None:
         self.push_screen(DirPickerModal(), self._on_dir_picked)
+
+    def action_sort_projects(self) -> None:
+        self.push_screen(SortModal(), self._on_sort_chosen)
+
+    def _on_sort_chosen(self, choice: tuple[str, bool] | None) -> None:
+        if choice is None:
+            return
+        key, reverse = choice
+        self._config.sort_projects(key, reverse)
+        self.query_one(ProjectList).reload(self._config)
 
     def action_remove(self) -> None:
         # Context-sensitive: with the session list focused, delete that one

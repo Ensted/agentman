@@ -1,7 +1,7 @@
 from __future__ import annotations
-import bisect
 import tomllib
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 import tomlkit
 
@@ -13,6 +13,7 @@ CONFIG_PATH = Path.home() / ".config" / "agentman" / "config.toml"
 class Project:
     name: str
     path: str
+    added_at: str = ""
 
     @property
     def resolved_path(self) -> str:
@@ -22,7 +23,6 @@ class Project:
 @dataclass
 class Config:
     projects: list[Project] = field(default_factory=list)
-    projects_sorted: bool = True
 
     @classmethod
     def load(cls) -> Config:
@@ -31,18 +31,10 @@ class Config:
         with CONFIG_PATH.open("rb") as f:
             data = tomllib.load(f)
         projects = [
-            Project(name=p["name"], path=p["path"])
+            Project(name=p["name"], path=p["path"], added_at=p.get("added_at", ""))
             for p in data.get("projects", [])
         ]
-        # Legacy configs predate the projects_sorted flag; alphabetize them
-        # once so existing installs pick up the new default order too.
-        projects_sorted = data.get("projects_sorted", False)
-        cfg = cls(projects=projects, projects_sorted=projects_sorted)
-        if not projects_sorted:
-            cfg.projects.sort(key=lambda p: p.name.casefold())
-            cfg.projects_sorted = True
-            cfg.save()
-        return cfg
+        return cls(projects=projects)
 
     def save(self) -> None:
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -50,12 +42,12 @@ class Config:
 
     def dumps(self) -> str:
         doc = tomlkit.document()
-        doc["projects_sorted"] = self.projects_sorted
         aot = tomlkit.aot()
         for project in self.projects:
             t = tomlkit.table()
             t["name"] = project.name
             t["path"] = project.path
+            t["added_at"] = project.added_at
             aot.append(t)
         doc["projects"] = aot
         return tomlkit.dumps(doc)
@@ -64,9 +56,8 @@ class Config:
         if any(p.resolved_path == str(Path(path).expanduser().resolve())
                for p in self.projects):
             return  # already present
-        keys = [p.name.casefold() for p in self.projects]
-        idx = bisect.bisect_left(keys, name.casefold())
-        self.projects.insert(idx, Project(name=name, path=path))
+        self.projects.append(Project(
+            name=name, path=path, added_at=datetime.now().isoformat()))
         self.save()
 
     def remove_project(self, project: Project) -> None:
@@ -85,3 +76,9 @@ class Config:
         self.projects[idx], self.projects[new_idx] = self.projects[new_idx], self.projects[idx]
         self.save()
         return True
+
+    def sort_projects(self, key: str, reverse: bool = False) -> None:
+        """Explicitly sort by 'name' or 'added_at'. User-triggered, not automatic."""
+        sort_key = (lambda p: p.name.casefold()) if key == "name" else (lambda p: p.added_at)
+        self.projects.sort(key=sort_key, reverse=reverse)
+        self.save()
