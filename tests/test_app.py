@@ -437,6 +437,36 @@ async def test_open_session_shows_via_tmux(seeded, monkeypatch):
     assert app._current_key == "sa2"
 
 
+async def test_sort_projects_via_keybinding(seeded):
+    from agentman.ui.sort_modal import SortModal
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert [p.name for p in app._config.projects] == ["alpha", "beta"]
+        await pilot.press("s")
+        await pilot.pause()
+        assert isinstance(app.screen, SortModal)
+        await pilot.click("#btn-name-desc")
+        await pilot.pause()
+    assert [p.name for p in app._config.projects] == ["beta", "alpha"]
+    assert [p.name for p in Config.load().projects] == ["beta", "alpha"]
+
+
+async def test_sort_projects_cancelled_keeps_order(seeded):
+    from agentman.ui.sort_modal import SortModal
+    app = AgentManApp(has_workspace=False)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        before = [p.name for p in app._config.projects]
+        await pilot.press("s")
+        await pilot.pause()
+        assert isinstance(app.screen, SortModal)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, SortModal)
+        assert [p.name for p in app._config.projects] == before
+
+
 async def test_switching_sessions_passes_previous_key(seeded, monkeypatch):
     calls = []
     app = AgentManApp(has_workspace=True)
